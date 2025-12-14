@@ -4,73 +4,77 @@ const path = require("path");
 
 module.exports = {
     name: "screenshot",
-    aliases: ["ss", "webshot"], 
+    aliases: ["ss", "webshot"],
     usePrefix: false,
     usage: "screenshot <url>",
-    version: "1.0",
-    description: "Takes a picture (screenshot) of any website link you send it.",
-    cooldown: 10, 
+    version: "2.0",
+    description: "Takes a picture of a website.",
+    cooldown: 5,
 
     execute: async ({ api, event, args }) => {
         const { threadID, messageID } = event;
         const targetUrl = args.join(" ");
 
         if (!targetUrl) {
-            return api.sendMessage("⚠️ Please provide a URL.\nUsage: screenshot <url>", threadID, messageID);
+            return api.sendMessage("⚠️ Please provide a URL.\nUsage: screenshot google.com", threadID, messageID);
         }
 
         try {
-            api.setMessageReaction("⏳", messageID, () => {}, true);
+            api.setMessageReaction("📸", messageID, () => {}, true);
 
-            const apiUrl = `https://norch-project.gleeze.com/api/screenshot?url=${encodeURIComponent(targetUrl)}`;
-            const response = await axios.get(apiUrl);
+            // 1. Setup paths correctly (Saved in the main 'cache' folder, not inside cmds)
+            const cacheDir = path.resolve(__dirname, "..", "cache");
+            const filePath = path.join(cacheDir, `ss_${Date.now()}.png`);
 
-            const data = response.data;
-
-            if (!data.success || !data.screenshot) {
-                api.setMessageReaction("❌", messageID, () => {}, true);
-                return api.sendMessage("❌ Failed to capture screenshot. The website might be unavailable.", threadID, messageID);
-            }
-
-            const screenshotUrl = data.screenshot;
-            const filePath = path.join(__dirname, "cache", `screenshot_${Date.now()}.jpg`);
-            
-            const cacheDir = path.join(__dirname, "cache");
+            // Ensure cache exists
             if (!fs.existsSync(cacheDir)) {
                 fs.mkdirSync(cacheDir, { recursive: true });
             }
 
-            const imageResponse = await axios({
-                url: screenshotUrl,
+            // 2. Use a Direct Image API (Thum.io is faster and doesn't require JSON parsing)
+            // We add 'https://' if the user forgot it
+            const cleanUrl = targetUrl.startsWith("http") ? targetUrl : `https://${targetUrl}`;
+            const apiUrl = `https://image.thum.io/get/width/1920/crop/1080/noanimate/${cleanUrl}`;
+
+            // 3. Download the stream
+            const response = await axios({
+                url: apiUrl,
                 method: "GET",
                 responseType: "stream"
             });
 
             const writer = fs.createWriteStream(filePath);
-            imageResponse.data.pipe(writer);
+            response.data.pipe(writer);
 
+            // 4. Wait for download to finish, then send
             writer.on("finish", () => {
                 api.setMessageReaction("✅", messageID, () => {}, true);
                 
                 const msg = {
-                    body: `📸 Screenshot of: ${targetUrl}`,
+                    body: `📸 Screenshot: ${cleanUrl}`,
                     attachment: fs.createReadStream(filePath)
                 };
 
-                api.sendMessage(msg, threadID, () => {
-                    fs.unlinkSync(filePath);
+                api.sendMessage(msg, threadID, (err) => {
+                    // Delete file after sending (or trying to)
+                    fs.unlink(filePath, (e) => { if(e) console.error(e); });
+                    
+                    if (err) {
+                        console.error("Send Error:", err);
+                        api.sendMessage("❌ Error sending the photo.", threadID, messageID);
+                    }
                 });
             });
 
             writer.on("error", (err) => {
                 console.error("Stream Error:", err);
-                api.sendMessage("❌ Error processing the image.", threadID, messageID);
+                api.sendMessage("❌ Failed to save the image.", threadID, messageID);
             });
 
         } catch (error) {
-            console.error("❌ Screenshot Error:", error);
+            console.error("Screenshot Error:", error.message);
             api.setMessageReaction("❌", messageID, () => {}, true);
-            api.sendMessage("❌ An error occurred while fetching the screenshot.", threadID, messageID);
+            api.sendMessage("❌ Could not connect to the screenshot service.", threadID, messageID);
         }
     }
 };
