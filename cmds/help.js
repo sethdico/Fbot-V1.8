@@ -15,13 +15,13 @@ module.exports = {
         const categories = {
             "🤖 AI & Chat": [
                 "ai", "aria", "copilot", "venice", 
-                "phind", "quillbot"
+               , "quillbot"
             ],
             "⚙️ Admin & Group": [
                 "add", "leave", "notify", "unsend", "changeavatar", "post", "cmd"
             ],
             "🛠️ Tools & Search": [
-                "wiki", "screenshot", "translate", "webcopilot", "dict", 
+                "screenshot", "translate", "webcopilot", "dict", 
                 "deepimg", "bible" 
             ],
             "ℹ️ System": [
