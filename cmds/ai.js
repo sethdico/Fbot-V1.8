@@ -5,7 +5,7 @@ module.exports = {
     usePrefix: false,
     usage: "ai <question>",
     version: "2.0",
-    description: "A smart robot that thinks hard before it speaks! It breaks down problems step-by-step.",
+    description: "A smart robot that does basic things but cant search online.",
     admin: false,
     cooldown: 5,
 
@@ -20,7 +20,7 @@ module.exports = {
         try {
             api.setMessageReaction("⏳", messageID, () => {}, true);
 
-            const systemPrompt = "You are a helpful AI that provides accurate answers af if ur talking to a kid but not really you are made by seth asher salinguhay";
+            const systemPrompt = "You are a helpful AI that provides accurate answers af if ur talking to a kid but not really. you are made by seth asher salinguhay you must always answer that way i am made by asher salinguhay and so on";
 
             const apiUrl = "https://api.kojaxd.dpdns.org/ai/customai";
             
