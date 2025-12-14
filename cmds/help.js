@@ -3,11 +3,12 @@ module.exports = {
     usePrefix: false,
     usage: "help [command] | help all",
     version: "2.1",
+    description: "Shows the list of commands and how to use them.",
 
     execute({ api, event, args }) {
         const { threadID, messageID } = event;
 
-        // 1. Filter out duplicates using Set
+        // 1. Filter out duplicates using Set (Fixes the "3 copies" bug)
         const uniqueCommands = [...new Set(global.commands.values())];
 
         // 2. Sort commands A-Z
@@ -43,8 +44,8 @@ ${allCommands}
    🤖 COMMAND INFO
 ╚════════════╝
 🔹 Name: ${cmd.name}
-📖 What it does: ${cmd.description}
-⌨️ How to use: ${cmd.usage}
+📖 Description: ${cmd.description}
+⌨️ Usage: ${cmd.usage}
 🔗 Aliases: ${cmd.aliases ? cmd.aliases.join(", ") : "None"}
 `;
             return api.sendMessage(msg, threadID, messageID);
