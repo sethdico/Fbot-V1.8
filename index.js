@@ -2,12 +2,37 @@ const fs = require('fs');
 const path = require('path');
 const express = require('express');
 const axios = require('axios');
-let login = require('ws3-fca');
 
-// Fix for newer library versions
-if (typeof login !== 'function' && login.default) {
-    login = login.default;
+// --- 🔧 CRITICAL FIX FOR LOGIN LIBRARY 🔧 ---
+// We load the library and check exactly what it gave us
+let loginModule;
+let login;
+
+try {
+    loginModule = require('ws3-fca');
+    
+    // Check 1: Is the export itself a function? (Standard)
+    if (typeof loginModule === 'function') {
+        login = loginModule;
+    } 
+    // Check 2: Is it inside .default? (Common in newer updates)
+    else if (loginModule && typeof loginModule.default === 'function') {
+        login = loginModule.default;
+    } 
+    // Check 3: Is it inside .login? (Rare but possible)
+    else if (loginModule && typeof loginModule.login === 'function') {
+        login = loginModule.login;
+    } 
+    else {
+        throw new Error("Login function not found in ws3-fca");
+    }
+} catch (e) {
+    console.error("\n❌ CRITICAL ERROR: Could not load 'ws3-fca'.");
+    console.error("👇 ERROR DETAILS:");
+    console.error(e);
+    process.exit(1);
 }
+// ---------------------------------------------
 
 const scheduleTasks = require('./custom');
 
@@ -18,16 +43,24 @@ const PORT = Number(process.env.PORT || 3000);
 const configPath = path.resolve(__dirname, 'config.json');
 const appStatePath = path.resolve(__dirname, 'appState.json');
 
-if (!fs.existsSync(configPath)) {
-    console.error("❌ FATAL ERROR: config.json is missing! Please create it.");
-    process.exit(0);
+// Check if config exists
+let config;
+if (fs.existsSync(configPath)) {
+    try {
+        config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    } catch (e) {
+        console.error("❌ Error: config.json is not valid JSON.");
+        config = {};
+    }
+} else {
+    config = {}; 
+    console.log("⚠️ Warning: config.json not found.");
 }
 
-const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 const botPrefix = config.prefix || "/";
 
-// --- 🌐 WEB SERVER 🌐 ---
-app.get('/', (req, res) => res.send('🤖 Bot is Active.'));
+// --- 🌐 WEB SERVER (KEEPS BOT ALIVE) 🌐 ---
+app.get('/', (req, res) => res.send('🤖 Amadeus Bot is Active.'));
 app.listen(PORT, () => console.log(`🌐 Server running on Port ${PORT}`));
 
 // Global Maps
@@ -75,7 +108,8 @@ loadFiles();
 const startBot = async () => {
     // Check for AppState
     if (!fs.existsSync(appStatePath)) {
-        console.error("❌ ERROR: appState.json is missing. Please put your cookies there.");
+        console.error("\n❌ STOP: appState.json is missing.");
+        console.error("👉 Please put your Facebook cookies in appState.json\n");
         return;
     }
 
@@ -83,13 +117,19 @@ const startBot = async () => {
     try {
         appState = JSON.parse(fs.readFileSync(appStatePath, 'utf8'));
     } catch (err) {
-        console.error("❌ ERROR: Your appState.json is broken (invalid JSON).");
+        console.error("❌ ERROR: appState.json is broken (invalid JSON).");
+        return;
+    }
+
+    // Final safety check before calling login
+    if (typeof login !== 'function') {
+        console.error("❌ FATAL: Login function is still not detected.");
         return;
     }
 
     login({ appState }, (err, api) => {
         if (err) {
-            console.error('❌ Login Failed:', err);
+            console.error('❌ Login Failed. Your appState/cookies might be expired.', err);
             return;
         }
 
@@ -101,18 +141,24 @@ const startBot = async () => {
             userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         });
 
-        console.log(`✅ Logged in as: ${api.getCurrentUserID()}`);
+        console.log(`✅ Logged in successfully! ID: ${api.getCurrentUserID()}`);
 
-        if (config.ownerID) scheduleTasks(config.ownerID, api, config);
+        if (config.ownerID) {
+            try {
+                scheduleTasks(config.ownerID, api, config);
+            } catch (e) {
+                console.log("⚠️ Could not start scheduler (custom.js issues).");
+            }
+        }
 
-        // Start specific events
+        // Start specific events (like AutoPost)
         global.events.forEach((event, name) => {
             if (event.onStart) {
                 try { event.onStart(api); } catch (e) { console.error(`❌ Event Start Error: ${name}`, e); }
             }
         });
 
-        // Listen Mqtt
+        // Listen for Messages
         api.listenMqtt(async (listenErr, event) => {
             if (listenErr) return console.error("Listener Error:", listenErr);
 
