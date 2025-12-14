@@ -4,11 +4,11 @@ const path = require("path");
 
 module.exports = {
     name: "wiki",
-    aliases: ["whatis", "define", "ddg"],
+    aliases: ["wikipedia", "whatis", "def"],
     usePrefix: false,
     usage: "wiki <topic>",
-    version: "3.0",
-    description: "Fetches wiki summary.",
+    version: "4.0", // "Old School" Version
+    description: "Fetches Wikipedia summaries using the robust Action API.",
     cooldown: 5,
 
     execute: async ({ api, event, args }) => {
@@ -18,66 +18,80 @@ module.exports = {
         if (!query) return api.sendMessage("⚠️ Usage: wiki <topic>", threadID, messageID);
 
         try {
-            api.setMessageReaction("🦆", messageID, () => {}, true);
+            api.setMessageReaction("📚", messageID, () => {}, true);
 
-            // DuckDuckGo API (Safe, reliable, allows bots)
-            // format=json makes it computer-readable
-            const apiUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json`;
-            
-            const response = await axios.get(apiUrl);
-            const data = response.data;
-
-            // Check if we got an abstract (summary)
-            if (!data.AbstractText) {
-                return api.sendMessage(`⚠️ No instant summary found for "${query}". Try a different spelling.`, threadID, messageID);
-            }
-
-            const summary = data.AbstractText;
-            const title = data.Heading;
-            const link = data.AbstractURL;
-            const imageUrl = data.Image; // DuckDuckGo provides an image URL sometimes
-
-            let msg = {
-                body: `🦆 **${title}**\n━━━━━━━━━━━━━━━━\n${summary}\n━━━━━━━━━━━━━━━━\n🔗 ${link}`
+            // 1. Use the "Action API" (older, but harder to block)
+            // We ask for the extract (text) and the pageimage (picture) in one go
+            const apiUrl = "https://en.wikipedia.org/w/api.php";
+            const params = {
+                action: "query",
+                format: "json",
+                prop: "extracts|pageimages",
+                exintro: true,
+                explaintext: true,
+                pithumbsize: 600, // Image size
+                redirects: 1,     // Auto-fix spelling/redirects
+                titles: query,
+                origin: "*"       // CORS hack
             };
 
-            // Handle Image (DuckDuckGo images are sometimes relative URLs)
-            if (imageUrl && !imageUrl.includes("placeholder")) {
-                // Fix relative URLs (e.g., "/i/..." becomes "https://duckduckgo.com/i/...")
-                const fullImageUrl = imageUrl.startsWith("http") ? imageUrl : `https://duckduckgo.com${imageUrl}`;
-                
+            const response = await axios.get(apiUrl, { params });
+            const pages = response.data.query.pages;
+
+            // The API returns an object with a random ID key (e.g., "12345": { content... })
+            // We need to grab the first object regardless of the ID
+            const pageId = Object.keys(pages)[0];
+            const data = pages[pageId];
+
+            // Check if page exists (ID -1 means missing)
+            if (pageId === "-1") {
+                return api.sendMessage(`❌ "${query}" not found on Wikipedia.`, threadID, messageID);
+            }
+
+            const title = data.title;
+            const summary = data.extract;
+            
+            // Clean up empty summaries
+            if (!summary) {
+                return api.sendMessage(`⚠️ Found "${title}", but it has no summary text available.`, threadID, messageID);
+            }
+
+            const msg = {
+                body: `📚 **${title}**\n━━━━━━━━━━━━━━━━\n${summary}\n━━━━━━━━━━━━━━━━`
+            };
+
+            // 2. Handle Image (if it exists)
+            if (data.thumbnail && data.thumbnail.source) {
+                const imageUrl = data.thumbnail.source;
                 const cacheDir = path.resolve(__dirname, "..", "cache");
                 const filePath = path.join(cacheDir, `wiki_${Date.now()}.jpg`);
 
+                // Create cache if missing
                 if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
 
-                try {
-                    const imageResponse = await axios({
-                        url: fullImageUrl,
-                        method: "GET",
-                        responseType: "stream"
-                    });
+                const imageResponse = await axios({
+                    url: imageUrl,
+                    method: "GET",
+                    responseType: "stream"
+                });
 
-                    const writer = fs.createWriteStream(filePath);
-                    imageResponse.data.pipe(writer);
+                const writer = fs.createWriteStream(filePath);
+                imageResponse.data.pipe(writer);
 
-                    writer.on("finish", () => {
-                        msg.attachment = fs.createReadStream(filePath);
-                        api.sendMessage(msg, threadID, () => fs.unlinkSync(filePath));
-                    });
-                } catch (e) {
-                    // If image fails, just send text
-                    api.sendMessage(msg, threadID, messageID);
-                }
+                writer.on("finish", () => {
+                    msg.attachment = fs.createReadStream(filePath);
+                    api.sendMessage(msg, threadID, () => fs.unlinkSync(filePath));
+                });
             } else {
+                // Send text only
                 api.sendMessage(msg, threadID, messageID);
             }
             api.setMessageReaction("✅", messageID, () => {}, true);
 
         } catch (error) {
-            console.error("DDG Wiki Error:", error.message);
+            console.error("Wiki Action API Error:", error.message);
             api.setMessageReaction("❌", messageID, () => {}, true);
-            api.sendMessage("❌ Error fetching data.", threadID, messageID);
+            api.sendMessage("❌ Error fetching Wikipedia data.", threadID, messageID);
         }
     }
 };
