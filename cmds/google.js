@@ -2,11 +2,11 @@ const axios = require("axios");
 
 module.exports = {
     name: "google",
-    aliases: ["g", "search"],
+    aliases: ["g", "search", "find"],
     usePrefix: false,
     usage: "google <topic>",
-    version: "1.0",
-    description: "Search Google and get top results.",
+    version: "2.0",
+    description: "Search Google and return the top 5 results.",
     cooldown: 5,
 
     execute: async ({ api, event, args }) => {
@@ -18,51 +18,40 @@ module.exports = {
         }
 
         try {
-            // 1. React to indicate processing
+            // 1. React to indicate searching
             api.setMessageReaction("🔍", messageID, () => {}, true);
 
-            // 2. Call the API
-            const apiUrl = "https://rapido.zetsu.xyz/api/google";
+            // 2. Call the new API (Deku - Free & Stable)
+            const apiUrl = `https://deku-rest-api.gleeze.com/search/google?q=${encodeURIComponent(query)}`;
             
-            const response = await axios.get(apiUrl, {
-                params: {
-                    q: query,
-                    apikey: "rapi_566265dea6d44e16b5149ee816dcf143"
-                }
-            });
-
+            const response = await axios.get(apiUrl);
             const data = response.data;
             
-            // APIs usually return results in 'result', 'data', or 'items'
-            const results = data.result || data.data || data.items;
+            // The API returns the list in 'result'
+            const results = data.result;
 
-            // Handle if results is an array (List of websites)
-            if (Array.isArray(results) && results.length > 0) {
-                // Get Top 3 results only to avoid spam
-                const topResults = results.slice(0, 3).map((item, index) => {
-                    return `${index + 1}. **${item.title}**\n🔗 ${item.link}\n📝 ${item.snippet || "No description."}`;
-                }).join("\n\n");
+            if (results && results.length > 0) {
+                // 3. Format Top 5 Results
+                let msg = `🔍 **Google Search: "${query}"**\n━━━━━━━━━━━━━━━━\n`;
 
-                const msg = `🔍 **Google Search: "${query}"**\n━━━━━━━━━━━━━━━━\n${topResults}\n━━━━━━━━━━━━━━━━`;
+                // Loop through first 5 items
+                const topResults = results.slice(0, 5);
+                topResults.forEach((item, index) => {
+                    msg += `${index + 1}. **${item.title}**\n🔗 ${item.url}\n📝 ${item.description || "No description."}\n\n`;
+                });
+
+                msg += `━━━━━━━━━━━━━━━━`;
                 
                 api.setMessageReaction("✅", messageID, () => {}, true);
                 return api.sendMessage(msg, threadID, messageID);
-            } 
-            
-            // Handle if it returns just text (unlikely for Google, but possible)
-            else if (typeof results === 'string') {
-                 api.setMessageReaction("✅", messageID, () => {}, true);
-                 return api.sendMessage(`🔍 **Google Result:**\n${results}`, threadID, messageID);
-            }
-            
-            else {
-                throw new Error("No results found");
+            } else {
+                throw new Error("No results returned");
             }
 
         } catch (error) {
-            console.error("❌ Google Search Error:", error);
+            console.error("Google Search Error:", error);
             api.setMessageReaction("❌", messageID, () => {}, true);
-            return api.sendMessage("❌ No results found or API error.", threadID, messageID);
+            return api.sendMessage("❌ No results found or the search API is currently busy.", threadID, messageID);
         }
     }
 };
