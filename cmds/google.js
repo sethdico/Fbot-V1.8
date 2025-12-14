@@ -5,8 +5,8 @@ module.exports = {
     aliases: ["g", "search", "find"],
     usePrefix: false,
     usage: "google <topic>",
-    version: "2.0",
-    description: "Search Google and return the top 5 results.",
+    version: "3.0",
+    description: "Search Google and return the top 5 results (Powered by Popcat).",
     cooldown: 5,
 
     execute: async ({ api, event, args }) => {
@@ -19,26 +19,27 @@ module.exports = {
 
         try {
             // 1. React to indicate searching
-            api.setMessageReaction("🔍", messageID, () => {}, true);
+            api.setMessageReaction("🔎", messageID, () => {}, true);
 
-            // 2. Call the new API (Deku - Free & Stable)
-            const apiUrl = `https://deku-rest-api.gleeze.com/search/google?q=${encodeURIComponent(query)}`;
+            // 2. Call the API (Popcat - Stable & Free)
+            const apiUrl = `https://api.popcat.xyz/google?q=${encodeURIComponent(query)}`;
             
             const response = await axios.get(apiUrl);
-            const data = response.data;
             
-            // The API returns the list in 'result'
-            const results = data.result;
+            // Popcat returns the array directly
+            const results = response.data;
 
             if (results && results.length > 0) {
                 // 3. Format Top 5 Results
                 let msg = `🔍 **Google Search: "${query}"**\n━━━━━━━━━━━━━━━━\n`;
 
-                // Loop through first 5 items
-                const topResults = results.slice(0, 5);
-                topResults.forEach((item, index) => {
-                    msg += `${index + 1}. **${item.title}**\n🔗 ${item.url}\n📝 ${item.description || "No description."}\n\n`;
-                });
+                // Loop through first 5 items (or less if fewer results)
+                const count = Math.min(results.length, 5);
+                
+                for (let i = 0; i < count; i++) {
+                    const item = results[i];
+                    msg += `${i + 1}. **${item.title}**\n🔗 ${item.link}\n📝 ${item.snippet || "No description."}\n\n`;
+                }
 
                 msg += `━━━━━━━━━━━━━━━━`;
                 
@@ -51,7 +52,8 @@ module.exports = {
         } catch (error) {
             console.error("Google Search Error:", error);
             api.setMessageReaction("❌", messageID, () => {}, true);
-            return api.sendMessage("❌ No results found or the search API is currently busy.", threadID, messageID);
+            // Fallback suggestion
+            return api.sendMessage("❌ Google Search failed. Try using /perplexity or /copilot for answers instead.", threadID, messageID);
         }
     }
 };
