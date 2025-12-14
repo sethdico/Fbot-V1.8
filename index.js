@@ -1,10 +1,3 @@
-// Improved index.js
-// - clearer structure, safer loads, consistent error handling
-// - preserves original behavior: serves static site, loads events & cmds, logs in with ws3-fca, listens to mqtt events,
-//   detects URLs, runs commands and uses cooldown map.
-//
-// Before replacing: create a branch or backup the current file.
-
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
@@ -12,20 +5,16 @@ const login = require('ws3-fca');
 const scheduleTasks = require('./custom');
 
 const app = express();
-const DEFAULT_PORT = 3000;
-const PORT = Number(process.env.PORT || DEFAULT_PORT);
+const PORT = Number(process.env.PORT || 3000);
 
-// small helper to read JSON config safely
+// Helper: Load JSON safely
 function loadJson(filePath) {
   try {
-    if (!fs.existsSync(filePath)) {
-      console.error(`❌ Missing ${filePath}!`);
-      process.exit(1);
-    }
+    if (!fs.existsSync(filePath)) return {};
     return JSON.parse(fs.readFileSync(filePath, 'utf8'));
   } catch (err) {
     console.error(`❌ Error loading ${filePath}:`, err);
-    process.exit(1);
+    return {};
   }
 }
 
@@ -38,224 +27,124 @@ const cooldowns = new Map();
 global.events = new Map();
 global.commands = new Map();
 
-// Load event handler files from ./events
-function loadEvents() {
-  const eventsDir = path.resolve(__dirname, 'events');
-  if (!fs.existsSync(eventsDir)) {
-    console.log('ℹ️ No events folder found, skipping events load.');
-    return;
-  }
-  try {
-    const files = fs.readdirSync(eventsDir).filter(f => f.endsWith('.js'));
-    for (const file of files) {
-      try {
-        const event = require(path.join(eventsDir, file));
-        if (event && event.name && typeof event.execute === 'function') {
-          global.events.set(event.name, event);
-          console.log(`✅ Loaded event: ${event.name}`);
-        } else {
-          console.warn(`⚠️ Skipped invalid event file: ${file}`);
-        }
-      } catch (err) {
-        console.error(`❌ Error loading event file ${file}:`, err);
-      }
-    }
-  } catch (err) {
-    console.error('❌ Error reading events directory:', err);
-  }
+// --- 🛡️ SAFETY & ANTI-BAN FUNCTIONS 🛡️ ---
+
+// 1. Simulate Human Typing
+function simulateTyping(api, threadID, duration = 3000) {
+  api.sendTypingIndicator(threadID, (err) => {
+    if (err) return;
+    setTimeout(() => {
+        // Just stops the visual indicator after duration
+        api.sendTypingIndicator(threadID, () => {}); 
+    }, duration);
+  });
 }
 
-// Load command files from ./cmds
-function loadCommands() {
+// 2. Random Delay (1s to 3s)
+const randomDelay = () => new Promise(r => setTimeout(r, Math.floor(Math.random() * 2000) + 1000));
+
+// ------------------------------------------
+
+function loadFiles() {
+  const eventsDir = path.resolve(__dirname, 'events');
   const cmdsDir = path.resolve(__dirname, 'cmds');
-  if (!fs.existsSync(cmdsDir)) {
-    console.log('ℹ️ No cmds folder found, skipping commands load.');
-    return;
-  }
-  try {
-    const files = fs.readdirSync(cmdsDir).filter(f => f.endsWith('.js'));
-    for (const file of files) {
-      try {
-        const cmd = require(path.join(cmdsDir, file));
-        if (cmd && cmd.name && typeof cmd.execute === 'function') {
-          global.commands.set(cmd.name, cmd);
-          console.log(`✅ Loaded command: ${cmd.name}`);
-          // also register aliases if present
-          if (Array.isArray(cmd.aliases)) {
-            for (const a of cmd.aliases) {
-              if (!global.commands.has(a)) global.commands.set(a, cmd);
-            }
-          }
-        } else {
-          console.warn(`⚠️ Skipped invalid command file: ${file}`);
-        }
-      } catch (err) {
-        console.error(`❌ Error loading command file ${file}:`, err);
+
+  if (fs.existsSync(eventsDir)) {
+    fs.readdirSync(eventsDir).forEach(file => {
+      if (file.endsWith('.js')) {
+        const event = require(path.join(eventsDir, file));
+        if (event.name) global.events.set(event.name, event);
       }
-    }
-  } catch (err) {
-    console.error('❌ Error reading cmds directory:', err);
+    });
+  }
+
+  if (fs.existsSync(cmdsDir)) {
+    fs.readdirSync(cmdsDir).forEach(file => {
+      if (file.endsWith('.js')) {
+        const cmd = require(path.join(cmdsDir, file));
+        if (cmd.name) {
+          global.commands.set(cmd.name, cmd);
+          if (cmd.aliases) cmd.aliases.forEach(a => global.commands.set(a, cmd));
+        }
+      }
+    });
   }
 }
 
 app.use(express.static(path.join(__dirname, 'public')));
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+app.listen(PORT, () => console.log(`🌐 Server running on Port ${PORT}`));
 
-app.listen(PORT, () => {
-  console.log(`🌐 Web Server running at http://localhost:${PORT}`);
-});
+loadFiles();
 
-loadEvents();
-loadCommands();
-
-// 🔴 FIX: Added callback to prevent crash if message fails
-function sendToOwner(api, text) {
-  if (!config.ownerID) return;
-  api.sendMessage(text, config.ownerID, (err) => {
-    if (err) {
-      console.log('⚠️ Warning: Could not send startup message to Owner. (Not friends or privacy settings restricted). Bot is still online.');
-    }
-  });
-}
-
-function userCooldownCheck(userId) {
+function userCooldownCheck(userId, cmdName, cooldownTime) {
+  const key = `${userId}-${cmdName}`;
   const now = Date.now();
-  const last = cooldowns.get(userId) || 0;
-  const gap = config.cooldownMs || 2000; // default 2s if not set
-  if (now - last < gap) {
-    return { ok: false, wait: gap - (now - last) };
-  }
-  cooldowns.set(userId, now);
+  const last = cooldowns.get(key) || 0;
+  const gap = (cooldownTime || 2) * 1000;
+  
+  if (now - last < gap) return { ok: false, wait: gap - (now - last) };
+  
+  cooldowns.set(key, now);
   return { ok: true };
 }
 
-function parseCommandFromBody(body) {
-  if (!body || typeof body !== 'string') return null;
-  const text = body.trim();
-  if (!text.startsWith(botPrefix)) return null;
-  const after = text.slice(botPrefix.length).trim();
-  if (!after) return null;
-  const parts = after.split(/\s+/);
-  const name = parts[0].toLowerCase();
-  const args = parts.slice(1);
-  return { name, args, raw: after };
-}
-
-const urlRegex = /(https?:\/\/[^\s]+)/gi;
-
 const startBot = async () => {
-  try {
-    login({ appState }, (err, api) => {
-      if (err) {
-        console.error('❌ Login failed:', err);
-        return;
-      }
+  login({ appState }, (err, api) => {
+    if (err) {
+      console.error('❌ Login Failed:', err);
+      return;
+    }
 
-      console.clear();
-      api.setOptions(config.option || {});
-      console.log('🤖 Bot is now online!');
-      sendToOwner(api, '🤖 Bot has started successfully!');
-
-      // run onStart for events
-      for (const handler of global.events.values()) {
-        try {
-          if (typeof handler.onStart === 'function') handler.onStart(api);
-        } catch (err) {
-          console.error('❌ Event onStart error:', err);
-        }
-      }
-
-      // listen to messages/events
-      api.listenMqtt(async (listenErr, event) => {
-        if (listenErr) {
-          console.error('❌ Event error:', listenErr);
-          try { api.sendMessage('❌ Error while listening to events.', config.ownerID); } catch (e) {}
-          return;
-        }
-
-        try {
-          // Call custom event handlers if matching
-          if (event && event.type && global.events.has(event.type)) {
-            try {
-              await global.events.get(event.type).execute({ api, event });
-            } catch (e) {
-              console.error(`❌ Event '${event.type}' failed:`, e);
-            }
-          }
-
-          // URL detection logic
-          if (event && event.body && urlRegex.test(event.body)) {
-            const urlCommand = global.commands.get('url');
-            if (urlCommand) {
-              // avoid duplicate processing per thread+url
-              const detectedKey = `${event.threadID}-${event.body.match(urlRegex)[0]}`;
-              // Use a simple per-process set to prevent repeating in short time
-              if (!global._detectedURLs) global._detectedURLs = new Set();
-              if (global._detectedURLs.has(detectedKey)) {
-                // already handled recently
-              } else {
-                global._detectedURLs.add(detectedKey);
-                // auto clean after 60s
-                setTimeout(() => global._detectedURLs.delete(detectedKey), 60_000);
-                // run the url command
-                try {
-                  await urlCommand.execute({ api, event, args: [event.body] });
-                } catch (e) {
-                  console.error('❌ url command failed:', e);
-                }
-              }
-            }
-          }
-
-          // Command handling (prefix-based)
-          if (event && (event.body || event.message)) {
-            const bodyText = event.body || (event.message && event.message.conversation) || '';
-            const cmdParsed = parseCommandFromBody(bodyText);
-            if (cmdParsed) {
-              const cmd = global.commands.get(cmdParsed.name);
-              if (!cmd) {
-                // optional: reply for unknown commands
-                // api.sendMessage(`Unknown command: ${cmdParsed.name}`, event.threadID);
-                return;
-              }
-
-              // cooldown check per sender
-              const userId = event.senderID || event.threadID || event.sender && event.sender.id;
-              const allowed = userCooldownCheck(userId || 'unknown');
-              if (!allowed.ok) {
-                // notify user to wait
-                try {
-                  await api.sendMessage(`Please wait ${Math.ceil(allowed.wait/1000)}s before using another command.`, event.threadID);
-                } catch (e) {}
-                return;
-              }
-
-              // Execute the command
-              try {
-                await cmd.execute({ api, event, args: cmdParsed.args, text: bodyText });
-              } catch (e) {
-                console.error(`❌ Command ${cmdParsed.name} failed:`, e);
-                try { api.sendMessage('An error occurred running that command.', event.threadID); } catch (err) {}
-              }
-            }
-          }
-        } catch (err) {
-          console.error('❌ Unexpected handler error:', err);
-        }
-      });
+    // Recommended Anti-Ban Options
+    api.setOptions({
+      forceLogin: true,
+      listenEvents: true,
+      logLevel: "silent",
+      selfListen: false,
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
     });
-  } catch (err) {
-    console.error('❌ Failed to start bot:', err);
-    process.exit(1);
-  }
+
+    console.log('🤖 Bot is online & Secure!');
+
+    // Initialize Scheduler
+    if (config.ownerID) scheduleTasks(config.ownerID, api, config);
+
+    api.listenMqtt(async (listenErr, event) => {
+      if (listenErr) return;
+
+      // Handle Events
+      if (global.events.has(event.type)) {
+        try { await global.events.get(event.type).execute({ api, event }); } catch (e) {}
+      }
+
+      // Handle Commands
+      if (event.body && event.body.startsWith(botPrefix)) {
+        const args = event.body.slice(botPrefix.length).trim().split(/ +/);
+        const cmdName = args.shift().toLowerCase();
+        const cmd = global.commands.get(cmdName);
+
+        if (cmd) {
+          // Cooldown Check
+          const cooldownCheck = userCooldownCheck(event.senderID, cmd.name, cmd.cooldown);
+          if (!cooldownCheck.ok) {
+            return api.sendMessage(`⏳ Please wait ${Math.ceil(cooldownCheck.wait / 1000)}s.`, event.threadID);
+          }
+
+          try {
+            // 🛡️ HUMANIZATION: Show typing + wait slightly
+            simulateTyping(api, event.threadID); 
+            await randomDelay(); 
+
+            await cmd.execute({ api, event, args });
+          } catch (e) {
+            console.error(`Error executing ${cmdName}:`, e);
+            api.sendMessage("❌ Error executing command.", event.threadID);
+          }
+        }
+      }
+    });
+  });
 };
 
 startBot();
-
-// Graceful shutdown
-process.on('SIGINT', () => {
-  console.log('🛑 Shutting down...');
-  process.exit(0);
-});
