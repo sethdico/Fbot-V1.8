@@ -110,12 +110,12 @@ app.listen(PORT, () => {
 loadEvents();
 loadCommands();
 
+// 🔴 FIX: Added callback to prevent crash if message fails
 function sendToOwner(api, text) {
   if (!config.ownerID) return;
-  // Add a callback function (err) => {} to catch errors so the bot doesn't crash
   api.sendMessage(text, config.ownerID, (err) => {
     if (err) {
-       console.log("⚠️ Could not send startup message to owner. (Check if you are friends with the bot).");
+      console.log('⚠️ Warning: Could not send startup message to Owner. (Not friends or privacy settings restricted). Bot is still online.');
     }
   });
 }
