@@ -2,7 +2,7 @@ const axios = require("axios");
 
 module.exports = {
     name: "geminivision",
-    aliases: ["gemv", "vision", "identify"],
+    aliases: ["gemv", "describe", "identify"],
     usePrefix: false,
     usage: "geminivision <prompt> (Reply to an image)",
     version: "1.0",
