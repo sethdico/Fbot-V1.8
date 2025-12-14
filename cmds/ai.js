@@ -5,6 +5,7 @@ module.exports = {
     usePrefix: false,
     usage: "ai <question>",
     version: "2.0",
+    description: "A smart robot that thinks hard before it speaks! It breaks down problems step-by-step.",
     admin: false,
     cooldown: 5,
 
@@ -17,10 +18,9 @@ module.exports = {
         }
 
         try {
-            // Indicate processing
             api.setMessageReaction("⏳", messageID, () => {}, true);
 
-            const systemPrompt = "You are a helpful AI assistant. For EVERY response, you must structure your thinking and answer using these tags: <thinking> Demonstrate thorough reasoning by: - Breaking down the problem into components - Analyzing from multiple angles - Challenging your assumptions - Showing authentic curiosity - Considering edge cases and potential issues - Developing your understanding progressively - Verifying your logic and conclusions Use natural, flowing thoughts - no rigid structure. </thinking> <answer> Provide your final response here: - Clear and concise - Directly addresses the question/task - Implements insights from thinking process - Uses appropriate formatting (code blocks, lists, etc.) - Includes examples or references if relevant - Highlights key points or takeaways </answer> CRITICAL: NEVER skip the thinking process. ALWAYS use these tags.";
+            const systemPrompt = "You are a helpful AI assistant. For EVERY response, you must structure your thinking and answer using these tags: <thinking> ... </thinking> <answer> ... </answer> CRITICAL: NEVER skip the thinking process.";
 
             const apiUrl = "https://api.kojaxd.dpdns.org/ai/customai";
             
@@ -32,12 +32,10 @@ module.exports = {
                 }
             });
 
-            // Retrieve the response from likely fields
             const data = response.data;
             const reply = data.message || data.result || data.response || data;
 
             if (reply) {
-                // Send the result
                 api.sendMessage(reply, threadID, messageID);
                 api.setMessageReaction("✅", messageID, () => {}, true);
             } else {
@@ -47,7 +45,7 @@ module.exports = {
         } catch (error) {
             console.error("❌ AI Error:", error);
             api.setMessageReaction("❌", messageID, () => {}, true);
-            api.sendMessage("❌ An error occurred while fetching the response.", threadID, messageID);
+            api.sendMessage("❌ An error occurred.", threadID, messageID);
         }
     }
 };
