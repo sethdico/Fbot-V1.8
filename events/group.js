@@ -4,30 +4,32 @@ module.exports = {
     async execute({ api, event }) {
         if (event.logMessageType === "log:subscribe") {
             try {
-                // Get fresh thread info
                 const threadInfo = await api.getThreadInfo(event.threadID);
                 const { threadName, participantIDs } = threadInfo;
                 const newUsers = event.logMessageData.addedParticipants;
 
                 for (const user of newUsers) {
+                    // If Bot is added
                     if (user.userFbId === api.getCurrentUserID()) {
-                        // If Bot is added, send a general greeting
-                        api.sendMessage(`👋 Hello everyone! I am amadeusbot. Made by asher\nType /help to see my commands.`, event.threadID);
-                        api.changeNickname("amadeusbot", event.threadID, api.getCurrentUserID());
+                        api.sendMessage(`👋 Hello! I am connected.`, event.threadID);
+                        // Try-catch for nickname permissions
+                        try {
+                            await api.changeNickname("Amadeus", event.threadID, api.getCurrentUserID());
+                        } catch (e) {
+                            console.log("Could not change nickname (Permissions).");
+                        }
                         continue;
                     }
 
-                    // Welcome the user
+                    // Welcome User
                     const userName = user.fullName || "New Member";
                     const welcomeMsg = {
-                        body: `👋 Welcome to ${threadName || "the group"}, @${userName}!\n👥 You are member #${participantIDs.length}.`,
+                        body: `👋 Welcome to ${threadName || "the group"}, @${userName}!`,
                         mentions: [{ tag: `@${userName}`, id: user.userFbId }]
                     };
 
                     await api.sendMessage(welcomeMsg, event.threadID);
-                    
-                    // 🛡️ SAFETY DELAY: Wait 2s if multiple people are added
-                    await new Promise(r => setTimeout(r, 2000));
+                    await new Promise(r => setTimeout(r, 1500)); // Anti-spam delay
                 }
             } catch (err) {
                 console.error("Group event error:", err);
