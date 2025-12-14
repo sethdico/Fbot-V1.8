@@ -1,13 +1,9 @@
 {
-  "prefix": "/",
   "ownerID": "100052951819398",
-  "option": {
-    "forceLogin": true,
-    "listenEvents": true,
-    "logLevel": "silent",
-    "selfListen": false,
-    "updatePresence": true,
-    "autoMarkDelivery": true,
-    "autoMarkRead": true
-  }
+  "botName": "Amadeus",
+  "prefix": "/",
+  "admin": [
+    "100052951819398"
+  ],
+  "autoRestart": true
 }
