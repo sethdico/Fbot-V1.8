@@ -5,7 +5,7 @@ module.exports = {
     usePrefix: false,
     admin: true,
     usage: "add [list | number]",
-    version: "1.1",
+    version: "1.2", // Bumped version
     description: "Add the owner to a group.",
     cooldown: 5,
 
@@ -28,8 +28,13 @@ module.exports = {
         }
 
         const index = parseInt(args[0]) - 1;
+        
+        // FIX: Added safety check
+        if (isNaN(index) || index < 0 || index >= groups.length) {
+            return api.sendMessage("❌ Invalid group number.", threadID);
+        }
+
         const group = groups[index];
-        if (!group) return api.sendMessage("❌ Invalid group number.", threadID);
 
         try {
             await api.addUserToGroup(config.ownerID, group.threadID);
