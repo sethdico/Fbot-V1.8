@@ -1,55 +1,38 @@
 const fs = require("fs");
 const axios = require("axios");
 const path = require("path");
-const configPath = "./config.json";
-const config = JSON.parse(fs.readFileSync(configPath));
 
 module.exports = {
     name: "prefix",
     usePrefix: false,
-    usage: "prefix",
-    version: "1.1",
-    description: "Displays the bot's prefix and a GIF.",
-    cooldown: 5,
     admin: false,
+    cooldown: 5,
 
     execute: async ({ api, event }) => {
-        const { threadID, messageID } = event;
-        const botPrefix = config.prefix || "/";
-        const botName = config.botName || "My Bot";
+        // Load config safely inside the command
+        let config = {};
+        try { config = require("../config.json"); } catch(e) {}
+        
+        const prefix = config.prefix || "/";
+        const botName = config.botName || "Fbot";
         const gifUrl = "https://media.giphy.com/media/1UwhOK8VX95TcfPBML/giphy.gif";
-        const tempFilePath = path.join(__dirname, "prefix.gif");
+        const cachePath = path.join(__dirname, "cache", "prefix.gif");
+
+        if (!fs.existsSync(path.join(__dirname, "cache"))) fs.mkdirSync(path.join(__dirname, "cache"));
 
         try {
-            // Download GIF
-            const response = await axios({
-                url: gifUrl,
-                method: "GET",
-                responseType: "stream",
-            });
-
-            const writer = fs.createWriteStream(tempFilePath);
-            response.data.pipe(writer);
+            const res = await axios.get(gifUrl, { responseType: "stream" });
+            const writer = fs.createWriteStream(cachePath);
+            res.data.pipe(writer);
 
             writer.on("finish", () => {
-                api.sendMessage(
-                    {
-                        body: ` Bot Information\n📌Prefix: ${botPrefix}\n🆔 Bot Name: ${botName}\n\nThanks for using my Fbot`,
-                        attachment: fs.createReadStream(tempFilePath),
-                    },
-                    threadID,
-                    () => fs.unlinkSync(tempFilePath) // Delete after sending
-                );
+                api.sendMessage({
+                    body: `🤖 **Bot Info**\n━━━━━━━━━━\n🔹 Prefix: ${prefix}\n🔹 Name: ${botName}`,
+                    attachment: fs.createReadStream(cachePath)
+                }, event.threadID, () => fs.unlinkSync(cachePath));
             });
-
-            writer.on("error", (err) => {
-                console.error("Error saving GIF:", err);
-                api.sendMessage("⚠️ Failed to send GIF.", threadID, messageID);
-            });
-
-        } catch (error) {
-            console.error("Error fetching GIF:", error);
-            api.sendMessage("⚠️ Could not retrieve GIF.", threadID, messageID);
+        } catch (e) {
+            api.sendMessage(`🔹 Prefix: ${prefix}`, event.threadID);
         }
-    },
+    }
 };
