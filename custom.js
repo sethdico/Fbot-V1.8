@@ -1,18 +1,32 @@
+// ================================================
+// FILE: custom.js
+// ================================================
 const cron = require('node-cron');
 
 const scheduleTasks = (ownerID, api, config = { autoRestart: true, autoGreet: false }) => {
-    console.log("✅ Auto-restart scheduler initialized.");
+    console.log("✅ Scheduler initialized with Human Jitter.");
 
-    // 📌 Auto-Restart at 6AM, 12PM, 6PM, 12AM
+    // Helper: Random delay between min and max minutes
+    const randomJitter = (minMinutes, maxMinutes) => {
+        return (Math.floor(Math.random() * (maxMinutes - minMinutes + 1)) + minMinutes) * 60 * 1000;
+    };
+
+    // 📌 Auto-Restart with Jitter
     if (config.autoRestart) {
+        // Scheduled for: 6AM, 12PM, 6PM, 12AM
         const restartTimes = ['0 6 * * *', '0 12 * * *', '0 18 * * *', '0 0 * * *'];
 
         restartTimes.forEach(time => {
             cron.schedule(time, () => {
-                api.sendMessage("🔄 Bot is restarting automatically...", ownerID, () => {
-                    console.log(`🔄 Scheduled restart at ${time}`);
-                    process.exit(1);
-                });
+                // DON'T restart immediately. Wait 1 to 15 minutes randomly.
+                const jitter = randomJitter(1, 15);
+                console.log(`⏰ Cron triggered. Waiting ${jitter / 1000}s to simulate human inconsistency...`);
+                
+                setTimeout(() => {
+                    api.sendMessage("💤 Taking a quick nap (Restarting)...", ownerID, () => {
+                        process.exit(1);
+                    });
+                }, jitter);
             }, { timezone: "Asia/Manila" });
         });
 
@@ -21,11 +35,8 @@ const scheduleTasks = (ownerID, api, config = { autoRestart: true, autoGreet: fa
         console.log("❌ Auto-restart is disabled.");
     }
 
-    // 📌 Auto-Greet Schedule (DISABLED FOR SAFETY)
     if (config.autoGreet) {
-        console.log("⚠️ WARNING: Auto-greet is currently disabled in code to prevent Facebook bans.");
-        // The original code here looped through your inbox and messaged everyone instantly.
-        // This causes immediate account flags. Do not uncomment unless you add delays.
+        console.log("⚠️ Auto-greet kept disabled for safety.");
     }
 };
 
