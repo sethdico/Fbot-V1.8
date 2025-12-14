@@ -29,18 +29,15 @@ global.commands = new Map();
 
 // --- 🛡️ SAFETY & ANTI-BAN FUNCTIONS 🛡️ ---
 
-// 1. Simulate Human Typing
 function simulateTyping(api, threadID, duration = 3000) {
   api.sendTypingIndicator(threadID, (err) => {
     if (err) return;
     setTimeout(() => {
-        // Just stops the visual indicator after duration
         api.sendTypingIndicator(threadID, () => {}); 
     }, duration);
   });
 }
 
-// 2. Random Delay (1s to 3s)
 const randomDelay = () => new Promise(r => setTimeout(r, Math.floor(Math.random() * 2000) + 1000));
 
 // ------------------------------------------
@@ -80,14 +77,25 @@ loadFiles();
 function userCooldownCheck(userId, cmdName, cooldownTime) {
   const key = `${userId}-${cmdName}`;
   const now = Date.now();
-  const last = cooldowns.get(key) || 0;
   const gap = (cooldownTime || 2) * 1000;
+  const last = cooldowns.get(key) || 0;
   
   if (now - last < gap) return { ok: false, wait: gap - (now - last) };
   
   cooldowns.set(key, now);
   return { ok: true };
 }
+
+// Helper to get name from UID
+const getUserName = (api, uid) => {
+    return new Promise((resolve) => {
+        api.getUserInfo(uid, (err, ret) => {
+            if (err) return resolve("Unknown");
+            if (ret[uid]) return resolve(ret[uid].name);
+            return resolve("Unknown");
+        });
+    });
+};
 
 const startBot = async () => {
   login({ appState }, (err, api) => {
@@ -96,7 +104,6 @@ const startBot = async () => {
       return;
     }
 
-    // Recommended Anti-Ban Options
     api.setOptions({
       forceLogin: true,
       listenEvents: true,
@@ -106,25 +113,39 @@ const startBot = async () => {
     });
 
     console.log('🤖 Bot is online & Secure!');
-
-    // Initialize Scheduler
     if (config.ownerID) scheduleTasks(config.ownerID, api, config);
 
     api.listenMqtt(async (listenErr, event) => {
       if (listenErr) return;
 
-      // Handle Events
       if (global.events.has(event.type)) {
         try { await global.events.get(event.type).execute({ api, event }); } catch (e) {}
       }
 
-      // Handle Commands
       if (event.body && event.body.startsWith(botPrefix)) {
         const args = event.body.slice(botPrefix.length).trim().split(/ +/);
         const cmdName = args.shift().toLowerCase();
         const cmd = global.commands.get(cmdName);
 
         if (cmd) {
+          // 🛡️ ADMIN CHECK (Updated with Name Check) 🛡️
+          if (cmd.admin) {
+              const senderID = event.senderID;
+              
+              // 1. Check if ID is in config (Best Way)
+              const isIdAdmin = config.admin.includes(senderID) || config.ownerID === senderID;
+              
+              if (!isIdAdmin) {
+                  // 2. Check if Name is "Seth Asher" (Requested Way)
+                  const name = await getUserName(api, senderID);
+                  
+                  if (name !== "Seth Asher") {
+                      return api.sendMessage("❌ You are not authorized to use this command.", event.threadID);
+                  }
+                  // If name is Seth Asher, we continue...
+              }
+          }
+
           // Cooldown Check
           const cooldownCheck = userCooldownCheck(event.senderID, cmd.name, cmd.cooldown);
           if (!cooldownCheck.ok) {
@@ -132,10 +153,8 @@ const startBot = async () => {
           }
 
           try {
-            // 🛡️ HUMANIZATION: Show typing + wait slightly
             simulateTyping(api, event.threadID); 
             await randomDelay(); 
-
             await cmd.execute({ api, event, args });
           } catch (e) {
             console.error(`Error executing ${cmdName}:`, e);
