@@ -1,3 +1,6 @@
+// ================================================
+// FILE: index.js
+// ================================================
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
@@ -27,18 +30,21 @@ const cooldowns = new Map();
 global.events = new Map();
 global.commands = new Map();
 
-// --- 🛡️ SAFETY & ANTI-BAN FUNCTIONS 🛡️ ---
+// --- 🛡️ HUMANIZATION & ANTI-BAN LOGIC 🛡️ ---
 
-function simulateTyping(api, threadID, duration = 3000) {
-  api.sendTypingIndicator(threadID, (err) => {
-    if (err) return;
-    setTimeout(() => {
-        api.sendTypingIndicator(threadID, () => {}); 
-    }, duration);
-  });
-}
+// 1. Random Integer Helper
+const rnd = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
-const randomDelay = () => new Promise(r => setTimeout(r, Math.floor(Math.random() * 2000) + 1000));
+// 2. Sleep Helper
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// 3. Human Delay Calculation
+// Simulates reading speed + thinking speed based on input length
+const getHumanDelay = (textLength) => {
+    const readingSpeed = rnd(50, 100); // ms per character
+    const thinkingTime = rnd(1000, 3000); // Base thinking time
+    return (textLength * readingSpeed) + thinkingTime;
+};
 
 // ------------------------------------------
 
@@ -77,7 +83,7 @@ loadFiles();
 function userCooldownCheck(userId, cmdName, cooldownTime) {
   const key = `${userId}-${cmdName}`;
   const now = Date.now();
-  const gap = (cooldownTime || 2) * 1000;
+  const gap = (cooldownTime || 5) * 1000; // Increased default cooldown for safety
   const last = cooldowns.get(key) || 0;
   
   if (now - last < gap) return { ok: false, wait: gap - (now - last) };
@@ -86,7 +92,6 @@ function userCooldownCheck(userId, cmdName, cooldownTime) {
   return { ok: true };
 }
 
-// Helper to get name from UID
 const getUserName = (api, uid) => {
     return new Promise((resolve) => {
         api.getUserInfo(uid, (err, ret) => {
@@ -104,20 +109,23 @@ const startBot = async () => {
       return;
     }
 
+    // 🛡️ SECURITY: Use modern User Agent and suppress logs
     api.setOptions({
       forceLogin: true,
       listenEvents: true,
       logLevel: "silent",
       selfListen: false,
-      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
+      updatePresence: true, // Appears 'Active' like a human
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     });
 
-    console.log('🤖 Bot is online & Secure!');
+    console.log('🤖 Bot is online & Humanized!');
     if (config.ownerID) scheduleTasks(config.ownerID, api, config);
 
     api.listenMqtt(async (listenErr, event) => {
       if (listenErr) return;
 
+      // Handle Events
       if (global.events.has(event.type)) {
         try { await global.events.get(event.type).execute({ api, event }); } catch (e) {}
       }
@@ -128,37 +136,55 @@ const startBot = async () => {
         const cmd = global.commands.get(cmdName);
 
         if (cmd) {
-          // 🛡️ ADMIN CHECK (Updated with Name Check) 🛡️
+          // Admin Check
           if (cmd.admin) {
               const senderID = event.senderID;
-              
-              // 1. Check if ID is in config (Best Way)
               const isIdAdmin = config.admin.includes(senderID) || config.ownerID === senderID;
-              
               if (!isIdAdmin) {
-                  // 2. Check if Name is "Seth Asher" (Requested Way)
-                  const name = await getUserName(api, senderID);
-                  
-                  if (name !== "Seth Asher") {
-                      return api.sendMessage("❌ You are not authorized to use this command.", event.threadID);
-                  }
-                  // If name is Seth Asher, we continue...
+                  return api.sendMessage("❌ Restricted command.", event.threadID);
               }
           }
 
           // Cooldown Check
           const cooldownCheck = userCooldownCheck(event.senderID, cmd.name, cmd.cooldown);
           if (!cooldownCheck.ok) {
-            return api.sendMessage(`⏳ Please wait ${Math.ceil(cooldownCheck.wait / 1000)}s.`, event.threadID);
+            // Don't reply to cooldowns instantly every time (spammy)
+            if (Math.random() > 0.5) {
+                return api.sendMessage(`⏳ Chill... wait ${Math.ceil(cooldownCheck.wait / 1000)}s.`, event.threadID);
+            }
+            return; 
           }
 
+          // 🛡️ HUMAN BEHAVIOR SIMULATION 🛡️
           try {
-            simulateTyping(api, event.threadID); 
-            await randomDelay(); 
+            // 1. Calculate realistic delay based on input length
+            const humanDelay = getHumanDelay(event.body.length);
+            
+            // 2. Wait (Simulate reading)
+            await sleep(humanDelay);
+
+            // 3. Mark as Read (Crucial for human appearance)
+            api.markAsRead(event.threadID);
+
+            // 4. Send Typing Indicator (Simulate typing response)
+            // Typing duration is random but related to estimated processing time
+            const typingDuration = rnd(2000, 5000); 
+            api.sendTypingIndicator(event.threadID, (err) => {
+                if(err) return;
+                // Stop typing indicator happens automatically when message sends, 
+                // but we add a small delay before sending execution
+            });
+
+            await sleep(typingDuration);
+
+            // 5. Execute Command
             await cmd.execute({ api, event, args });
+
           } catch (e) {
             console.error(`Error executing ${cmdName}:`, e);
-            api.sendMessage("❌ Error executing command.", event.threadID);
+            // Don't error message instantly
+            await sleep(2000);
+            api.sendMessage("❌ I tripped over a wire.", event.threadID);
           }
         }
       }
