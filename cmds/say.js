@@ -4,9 +4,10 @@ const path = require("path");
 
 module.exports = {
     name: "say",
+    aliases: ["tts", "speak"],
     usePrefix: false,
     usage: "say <text>",
-    version: "1.0",
+    version: "2.0", // Bumped version
     cooldown: 5,
     admin: false,
 
@@ -14,60 +15,66 @@ module.exports = {
         const { threadID, messageID } = event;
 
         if (args.length === 0) {
-            return api.sendMessage("⚠️ Please provide text to convert to speech.\nUsage: say <text>", threadID, messageID);
+            return api.sendMessage("⚠️ Please provide text.\nUsage: say Hello world", threadID, messageID);
         }
 
         const text = args.join(" ");
-        const apiUrl = `https://apis-rho-nine.vercel.app/tts?text=${encodeURIComponent(text)}`;
-        const filePath = path.join(__dirname, "tts.mp3");
+        // Google TTS URL (Reliable)
+        // tl=en sets language to English. Change to 'tl=tl' for Tagalog if you prefer.
+        const apiUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=en&client=tw-ob`;
+        
+        // Save to the main cache folder so we don't clutter the cmds folder
+        const cacheDir = path.resolve(__dirname, "..", "cache");
+        const filePath = path.join(cacheDir, `tts_${Date.now()}.mp3`);
+
+        // Ensure cache folder exists
+        if (!fs.existsSync(cacheDir)) {
+            fs.mkdirSync(cacheDir, { recursive: true });
+        }
 
         try {
-            // Indicate processing with reaction
-            api.setMessageReaction("🕥", messageID, () => {}, true);
+            api.setMessageReaction("🗣️", messageID, () => {}, true);
 
-            // Fetch TTS audio from API
             const response = await axios({
                 url: apiUrl,
                 method: "GET",
                 responseType: "stream",
-                headers: { "User-Agent": "Mozilla/5.0" }
+                headers: {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+                }
             });
 
-            // Save audio file
             const writer = fs.createWriteStream(filePath);
             response.data.pipe(writer);
 
-            writer.on("finish", async () => {
+            writer.on("finish", () => {
                 api.setMessageReaction("✅", messageID, () => {}, true);
 
                 const msg = {
                     body: `🗣️ Saying: "${text}"`,
-                    attachment: fs.createReadStream(filePath),
+                    attachment: fs.createReadStream(filePath)
                 };
 
                 api.sendMessage(msg, threadID, (err) => {
+                    // Delete the file immediately after sending
+                    fs.unlink(filePath, (e) => { if(e) console.error(e); });
+
                     if (err) {
                         console.error("❌ Error sending audio:", err);
-                        return api.sendMessage("⚠️ Failed to send the audio.", threadID);
+                        api.sendMessage("❌ Failed to send audio.", threadID, messageID);
                     }
-
-                    // Delete file after sending
-                    fs.unlink(filePath, (unlinkErr) => {
-                        if (unlinkErr) console.error("❌ Error deleting file:", unlinkErr);
-                    });
                 });
             });
 
             writer.on("error", (err) => {
-                console.error("❌ Error downloading TTS:", err);
-                api.setMessageReaction("❌", messageID, () => {}, true);
-                api.sendMessage("⚠️ Failed to process TTS audio.", threadID, messageID);
+                console.error("❌ Stream Error:", err);
+                api.sendMessage("❌ Failed to process audio.", threadID, messageID);
             });
 
         } catch (error) {
-            console.error("❌ Error fetching TTS:", error);
+            console.error("❌ Google TTS Error:", error.message);
             api.setMessageReaction("❌", messageID, () => {}, true);
-            api.sendMessage(`⚠️ Could not fetch TTS audio. Error: ${error.message}`, threadID, messageID);
+            api.sendMessage("❌ Failed to generate speech.", threadID, messageID);
         }
     },
 };
