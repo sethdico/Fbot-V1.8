@@ -2,25 +2,27 @@ module.exports = {
     name: "help",
     usePrefix: false,
     usage: "help [command] | help all",
-    version: "3.0",
+    version: "3.1",
     description: "Shows commands categorized for easier reading.",
 
     execute({ api, event, args }) {
         const { threadID, messageID } = event;
-        const commands = [...global.commands.values()];
 
-        // 1. Define your Categories
+        // 🔧 FIX: Use a Set to remove duplicate objects caused by aliases
+        const commands = [...new Set(global.commands.values())];
+
+        // 1. Define your Categories (I added 'dict' and 'rabbit' here)
         const categories = {
-            "🤖 AI & Chat": ["ai", "aria", "blackbox", "chipp", "copilot", "geminivision", "openrouter", "perplexity", "venice", "deepimg"],
+            "🤖 AI & Chat": ["ai", "aria", "blackbox", "chipp", "copilot", "geminivision", "openrouter", "perplexity", "venice", "deepimg", "rabbit"],
             "⚙️ Admin & Group": ["add", "leave", "notify", "unsend", "changeavatar", "post", "cmd"],
-            "🛠️ Tools & Search": ["google", "wiki", "screenshot", "translate", "webcopilot", "say", "shoti"],
+            "🛠️ Tools & Search": ["google", "wiki", "screenshot", "translate", "webcopilot", "say", "shoti", "dict"],
             "ℹ️ System": ["help", "prefix", "ping", "uptime"]
         };
 
         // 2. Logic to handle specific command help (e.g., "help ai")
         if (args.length > 0) {
             const cmdName = args[0].toLowerCase();
-            const cmd = global.commands.get(cmdName) || [...global.commands.values()].find(c => c.aliases && c.aliases.includes(cmdName));
+            const cmd = global.commands.get(cmdName);
 
             if (!cmd) return api.sendMessage(`❌ Command "${cmdName}" not found.`, threadID, messageID);
 
@@ -44,7 +46,12 @@ module.exports = {
         let listedCommands = new Set();
 
         for (const [category, cmdList] of Object.entries(categories)) {
-            const availableCmds = cmdList.filter(name => global.commands.has(name));
+            // Filter: Ensure command exists AND matches the file name (prevents aliases showing up)
+            const availableCmds = cmdList.filter(name => {
+                const cmd = global.commands.get(name);
+                return cmd && cmd.name === name;
+            });
+
             if (availableCmds.length > 0) {
                 msg += `➤ ${category}\n`;
                 msg += `  ${availableCmds.join(", ")}\n\n`;
