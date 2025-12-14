@@ -7,9 +7,9 @@ module.exports = {
     aliases: ["ss", "webshot"],
     usePrefix: false,
     usage: "screenshot <url>",
-    version: "2.0",
+    version: "3.0", // Jonell API Version
     description: "Takes a picture of a website.",
-    cooldown: 5,
+    cooldown: 10, // Increased cooldown as this API can be a bit slower
 
     execute: async ({ api, event, args }) => {
         const { threadID, messageID } = event;
@@ -22,7 +22,7 @@ module.exports = {
         try {
             api.setMessageReaction("📸", messageID, () => {}, true);
 
-            // 1. Setup paths correctly (Saved in the main 'cache' folder, not inside cmds)
+            // 1. Setup paths correctly
             const cacheDir = path.resolve(__dirname, "..", "cache");
             const filePath = path.join(cacheDir, `ss_${Date.now()}.png`);
 
@@ -31,15 +31,16 @@ module.exports = {
                 fs.mkdirSync(cacheDir, { recursive: true });
             }
 
-            // 2. Use a Direct Image API (Thum.io is faster and doesn't require JSON parsing)
-            // We add 'https://' if the user forgot it
-            const cleanUrl = targetUrl.startsWith("http") ? targetUrl : `https://${targetUrl}`;
-            const apiUrl = `https://image.thum.io/get/width/1920/crop/1080/noanimate/${cleanUrl}`;
-
+            // 2. Use the requested API
+            const apiUrl = "https://api.ccprojectsapis-jonell.gleeze.com/api/screenshot";
+            
             // 3. Download the stream
             const response = await axios({
                 url: apiUrl,
                 method: "GET",
+                params: {
+                    url: targetUrl // The API handles adding https:// automatically
+                },
                 responseType: "stream"
             });
 
@@ -51,13 +52,13 @@ module.exports = {
                 api.setMessageReaction("✅", messageID, () => {}, true);
                 
                 const msg = {
-                    body: `📸 Screenshot: ${cleanUrl}`,
+                    body: `📸 Screenshot: ${targetUrl}`,
                     attachment: fs.createReadStream(filePath)
                 };
 
                 api.sendMessage(msg, threadID, (err) => {
-                    // Delete file after sending (or trying to)
-                    fs.unlink(filePath, (e) => { if(e) console.error(e); });
+                    // Delete file after sending
+                    fs.unlink(filePath, (e) => {});
                     
                     if (err) {
                         console.error("Send Error:", err);
@@ -74,7 +75,7 @@ module.exports = {
         } catch (error) {
             console.error("Screenshot Error:", error.message);
             api.setMessageReaction("❌", messageID, () => {}, true);
-            api.sendMessage("❌ Could not connect to the screenshot service.", threadID, messageID);
+            api.sendMessage("❌ The screenshot API is currently down or busy.", threadID, messageID);
         }
     }
 };
