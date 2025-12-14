@@ -6,7 +6,7 @@ module.exports = {
     usePrefix: false,
     usage: "perplexity <question>",
     version: "1.0",
-    description: "Chat with Perplexity AI (Real-time Web Search).",
+    description: "A researcher AI! It searches the live internet to find up-to-date answers for you.",
     cooldown: 5,
 
     execute: async ({ api, event, args }) => {
@@ -18,10 +18,8 @@ module.exports = {
         }
 
         try {
-            // 1. React to indicate processing
             api.setMessageReaction("🧠", messageID, () => {}, true);
 
-            // 2. Call the API
             const apiUrl = "https://rapido.zetsu.xyz/api/perplexity";
             
             const response = await axios.get(apiUrl, {
@@ -32,15 +30,11 @@ module.exports = {
             });
 
             const data = response.data;
-            
-            // Perplexity APIs usually return 'message' or 'response'
             const reply = data.message || data.response || data.result || data.data;
 
             if (reply) {
-                // 3. Send the result
                 api.setMessageReaction("✅", messageID, () => {}, true);
                 
-                // Format nicely
                 const finalMessage = `🧠 **Perplexity AI**\n━━━━━━━━━━━━━━━━\n${reply}\n━━━━━━━━━━━━━━━━`;
                 return api.sendMessage(finalMessage, threadID, messageID);
             } else {
@@ -50,7 +44,7 @@ module.exports = {
         } catch (error) {
             console.error("❌ Perplexity Error:", error);
             api.setMessageReaction("❌", messageID, () => {}, true);
-            return api.sendMessage("❌ An error occurred. The API might be down or busy.", threadID, messageID);
+            return api.sendMessage("❌ An error occurred.", threadID, messageID);
         }
     }
 };
