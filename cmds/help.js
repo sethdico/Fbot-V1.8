@@ -2,20 +2,19 @@ module.exports = {
     name: "help",
     usePrefix: false,
     usage: "help [command] | help all",
-    version: "4.0", // Organized Version
+    version: "4.1",
     description: "Shows commands categorized for easier reading.",
 
     execute({ api, event, args }) {
         const { threadID, messageID } = event;
 
-        // 🔧 Filter unique commands to prevent duplicates in "Others"
+        // 🔧 Filter unique commands to prevent duplicates
         const commands = [...new Set(global.commands.values())];
 
-        // 1. Define your Categories (Updated as requested)
+        // 1. Define your Categories
         const categories = {
             "🤖 AI & Chat": [
-                "ai", "aria", "copilot", "venice", 
-               , "quillbot"
+                "ai", "aria", "copilot", "venice", "quillbot"
             ],
             "⚙️ Admin & Group": [
                 "add", "leave", "notify", "unsend", "changeavatar", "post", "cmd"
@@ -29,8 +28,9 @@ module.exports = {
             ]
         };
 
-        // 2. Logic to handle specific command help (e.g., "help ai")
-        if (args.length > 0) {
+        // 2. Logic to handle specific command help
+        // FIX: We added '&& args[0].toLowerCase() !== "all"' so it skips this block if you type "all"
+        if (args.length > 0 && args[0].toLowerCase() !== "all") {
             const cmdName = args[0].toLowerCase();
             const cmd = global.commands.get(cmdName);
 
@@ -49,14 +49,12 @@ module.exports = {
 `, threadID, messageID);
         }
 
-        // 3. Build the Categorized List
+        // 3. Build the Categorized List (This runs for "help" OR "help all")
         let msg = `╔════════════╗\n   🤖 BOT MENU\n╚════════════╝\n\n`;
 
-        // Create a Set of all listed commands to find "Others"
         let listedCommands = new Set();
 
         for (const [category, cmdList] of Object.entries(categories)) {
-            // Filter: Ensure command exists AND matches the file name (prevents aliases showing up)
             const availableCmds = cmdList.filter(name => {
                 const cmd = global.commands.get(name);
                 return cmd && cmd.name === name;
@@ -69,7 +67,7 @@ module.exports = {
             }
         }
 
-        // Find commands not in the manual lists (The "Others")
+        // Find commands not in the manual lists
         const others = commands
             .map(c => c.name)
             .filter(name => !listedCommands.has(name))
