@@ -1,7 +1,11 @@
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
-const login = require('ws3-fca');
+let login = require('ws3-fca');
+// Fix for newer library versions exporting as an object
+if (typeof login !== 'function' && login.default) {
+    login = login.default;
+}
 const scheduleTasks = require('./custom');
 
 const app = express();
