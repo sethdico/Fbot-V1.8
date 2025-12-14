@@ -2,70 +2,69 @@ module.exports = {
     name: "help",
     usePrefix: false,
     usage: "help [command] | help all",
-    version: "2.1",
-    description: "Shows the list of commands and how to use them.",
+    version: "3.0",
+    description: "Shows commands categorized for easier reading.",
 
     execute({ api, event, args }) {
         const { threadID, messageID } = event;
+        const commands = [...global.commands.values()];
 
-        // 1. Filter out duplicates using Set (Fixes the "3 copies" bug)
-        const uniqueCommands = [...new Set(global.commands.values())];
+        // 1. Define your Categories
+        const categories = {
+            "🤖 AI & Chat": ["ai", "aria", "blackbox", "chipp", "copilot", "geminivision", "openrouter", "perplexity", "venice", "deepimg"],
+            "⚙️ Admin & Group": ["add", "leave", "notify", "unsend", "changeavatar", "post", "cmd"],
+            "🛠️ Tools & Search": ["google", "wiki", "screenshot", "translate", "webcopilot", "say", "shoti"],
+            "ℹ️ System": ["help", "prefix", "ping", "uptime"]
+        };
 
-        // 2. Sort commands A-Z
-        const sortedCommands = uniqueCommands.sort((a, b) => a.name.localeCompare(b.name));
-
+        // 2. Logic to handle specific command help (e.g., "help ai")
         if (args.length > 0) {
-            const commandName = args[0].toLowerCase();
+            const cmdName = args[0].toLowerCase();
+            const cmd = global.commands.get(cmdName) || [...global.commands.values()].find(c => c.aliases && c.aliases.includes(cmdName));
 
-            // === SHOW ALL COMMANDS ===
-            if (commandName === "all") {
-                const allCommands = sortedCommands
-                    .filter(cmd => !cmd.admin) // Hide admin commands
-                    .map((cmd) => {
-                        return `🔹 **${cmd.name}**\n📖 ${cmd.description || "No description."}\n⌨️ ${cmd.usage}`;
-                    })
-                    .join("\n\n");
+            if (!cmd) return api.sendMessage(`❌ Command "${cmdName}" not found.`, threadID, messageID);
 
-                const msg = `
+            return api.sendMessage(`
 ╔════════════╗
-   🤖 ALL COMMANDS
+   📖 GUIDE
 ╚════════════╝
-${allCommands}
-`;
-                return api.sendMessage(msg, threadID, messageID);
-            }
-
-            // === SHOW SINGLE COMMAND ===
-            const cmd = global.commands.get(commandName);
-            if (!cmd) return api.sendMessage(`❌ Command not found.`, threadID, messageID);
-
-            const msg = `
-╔════════════╗
-   🤖 COMMAND INFO
-╚════════════╝
-🔹 Name: ${cmd.name}
-📖 Description: ${cmd.description}
-⌨️ Usage: ${cmd.usage}
-🔗 Aliases: ${cmd.aliases ? cmd.aliases.join(", ") : "None"}
-`;
-            return api.sendMessage(msg, threadID, messageID);
+🔹 **Name:** ${cmd.name}
+📝 **Desc:** ${cmd.description || "No description."}
+⌨️ **Usage:** ${cmd.usage || cmd.name}
+🖇️ **Aliases:** ${cmd.aliases ? cmd.aliases.join(", ") : "None"}
+⏱️ **Cooldown:** ${cmd.cooldown || 0}s
+👑 **Admin:** ${cmd.admin ? "Yes" : "No"}
+`, threadID, messageID);
         }
 
-        // === MAIN MENU (Short List) ===
-        // Just shows names to keep it clean
-        const featured = sortedCommands
-            .filter(cmd => !cmd.admin)
-            .map(cmd => `• ${cmd.name}`)
-            .join("\n");
+        // 3. Build the Categorized List
+        let msg = `╔════════════╗\n   🤖 BOT MENU\n╚════════════╝\n\n`;
 
-        api.sendMessage(`
-╔════════════╗
-   🤖 BOT MENU
-╚════════════╝
-${featured}
+        // Create a Set of all listed commands to find "Others"
+        let listedCommands = new Set();
 
-💡 Type **"help all"** to see what each command does!
-💡 Type **"help <command>"** for specific details.
-`, threadID, messageID);
+        for (const [category, cmdList] of Object.entries(categories)) {
+            const availableCmds = cmdList.filter(name => global.commands.has(name));
+            if (availableCmds.length > 0) {
+                msg += `➤ ${category}\n`;
+                msg += `  ${availableCmds.join(", ")}\n\n`;
+                availableCmds.forEach(c => listedCommands.add(c));
+            }
+        }
+
+        // Find commands not in the manual lists (The "Others")
+        const others = commands
+            .map(c => c.name)
+            .filter(name => !listedCommands.has(name))
+            .sort();
+
+        if (others.length > 0) {
+            msg += `➤ 📂 Others\n`;
+            msg += `  ${others.join(", ")}\n\n`;
+        }
+
+        msg += `💡 Type **help <command>** for details.`;
+
+        return api.sendMessage(msg, threadID, messageID);
     }
 };
