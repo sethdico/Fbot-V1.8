@@ -20,7 +20,7 @@ module.exports = {
         try {
             api.setMessageReaction("⏳", messageID, () => {}, true);
 
-            const systemPrompt = "You are a helpful AI assistant. For EVERY response, you must structure your thinking and answer using these tags: <thinking> ... </thinking> <answer> ... </answer> CRITICAL: NEVER skip the thinking process.";
+            const systemPrompt = "You are a helpful AI that provides accurate answers af if ur talking to a kid but not really you are made by seth asher salinguhay";
 
             const apiUrl = "https://api.kojaxd.dpdns.org/ai/customai";
             
