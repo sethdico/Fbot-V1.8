@@ -2,13 +2,13 @@ module.exports = {
     name: "help",
     usePrefix: false,
     usage: "help [command] | help all",
-    version: "4.1",
+    version: "4.2", 
     description: "Shows commands categorized for easier reading.",
 
     execute({ api, event, args }) {
         const { threadID, messageID } = event;
 
-        // 🔧 Filter unique commands to prevent duplicates
+        // 🔧 Filter unique commands
         const commands = [...new Set(global.commands.values())];
 
         // 1. Define your Categories
@@ -17,7 +17,8 @@ module.exports = {
                 "ai", "aria", "copilot", "venice", "quillbot"
             ],
             "⚙️ Admin & Group": [
-                "add", "leave", "notify", "unsend", "changeavatar", "post", "cmd"
+                "add", "leave", "notify", "unsend", "changeavatar", "post", "cmd", 
+                "kick", "restart" // 🟢 Added new commands here
             ],
             "🛠️ Tools & Search": [
                 "screenshot", "translate", "webcopilot", "dict", 
@@ -29,7 +30,7 @@ module.exports = {
         };
 
         // 2. Logic to handle specific command help
-        // FIX: We added '&& args[0].toLowerCase() !== "all"' so it skips this block if you type "all"
+        // Skips this block if the user types "help all"
         if (args.length > 0 && args[0].toLowerCase() !== "all") {
             const cmdName = args[0].toLowerCase();
             const cmd = global.commands.get(cmdName);
@@ -49,12 +50,13 @@ module.exports = {
 `, threadID, messageID);
         }
 
-        // 3. Build the Categorized List (This runs for "help" OR "help all")
+        // 3. Build the Categorized List
         let msg = `╔════════════╗\n   🤖 BOT MENU\n╚════════════╝\n\n`;
 
         let listedCommands = new Set();
 
         for (const [category, cmdList] of Object.entries(categories)) {
+            // Filter: Ensure command actually exists in the bot files
             const availableCmds = cmdList.filter(name => {
                 const cmd = global.commands.get(name);
                 return cmd && cmd.name === name;
@@ -67,7 +69,7 @@ module.exports = {
             }
         }
 
-        // Find commands not in the manual lists
+        // Find commands not in the manual lists (The "Others")
         const others = commands
             .map(c => c.name)
             .filter(name => !listedCommands.has(name))
