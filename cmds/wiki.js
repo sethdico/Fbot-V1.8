@@ -4,11 +4,11 @@ const path = require("path");
 
 module.exports = {
     name: "wiki",
-    aliases: ["wikipedia", "whatis"],
+    aliases: ["whatis", "define", "ddg"],
     usePrefix: false,
     usage: "wiki <topic>",
-    version: "2.1",
-    description: "Fetches a summary from Wikipedia.",
+    version: "3.0",
+    description: "Fetches wiki summary.",
     cooldown: 5,
 
     execute: async ({ api, event, args }) => {
@@ -18,64 +18,66 @@ module.exports = {
         if (!query) return api.sendMessage("⚠️ Usage: wiki <topic>", threadID, messageID);
 
         try {
-            api.setMessageReaction("🧠", messageID, () => {}, true);
+            api.setMessageReaction("🦆", messageID, () => {}, true);
 
-            // 1. We MUST send a User-Agent or Wikipedia blocks us (403 Error)
-            const headers = {
-                "User-Agent": "Fbot-StudentProject/1.0 (Contact: yourname@example.com)" 
-            };
-
-            const apiUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(query)}`;
+            // DuckDuckGo API (Safe, reliable, allows bots)
+            // format=json makes it computer-readable
+            const apiUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json`;
             
-            const response = await axios.get(apiUrl, { headers });
+            const response = await axios.get(apiUrl);
             const data = response.data;
 
-            if (data.type === "disambiguation") {
-                return api.sendMessage(`⚠️ "${query}" is too vague. Be more specific.`, threadID, messageID);
+            // Check if we got an abstract (summary)
+            if (!data.AbstractText) {
+                return api.sendMessage(`⚠️ No instant summary found for "${query}". Try a different spelling.`, threadID, messageID);
             }
 
-            const summary = data.extract;
-            const title = data.title;
-            const link = data.content_urls.desktop.page;
-            
+            const summary = data.AbstractText;
+            const title = data.Heading;
+            const link = data.AbstractURL;
+            const imageUrl = data.Image; // DuckDuckGo provides an image URL sometimes
+
             let msg = {
-                body: `📚 **${title}**\n━━━━━━━━━━━━━━━━\n${summary}\n━━━━━━━━━━━━━━━━\n🔗 Source: ${link}`
+                body: `🦆 **${title}**\n━━━━━━━━━━━━━━━━\n${summary}\n━━━━━━━━━━━━━━━━\n🔗 ${link}`
             };
 
-            // 2. Image Handling
-            if (data.thumbnail && data.thumbnail.source) {
-                const imageUrl = data.thumbnail.source;
+            // Handle Image (DuckDuckGo images are sometimes relative URLs)
+            if (imageUrl && !imageUrl.includes("placeholder")) {
+                // Fix relative URLs (e.g., "/i/..." becomes "https://duckduckgo.com/i/...")
+                const fullImageUrl = imageUrl.startsWith("http") ? imageUrl : `https://duckduckgo.com${imageUrl}`;
+                
                 const cacheDir = path.resolve(__dirname, "..", "cache");
                 const filePath = path.join(cacheDir, `wiki_${Date.now()}.jpg`);
 
                 if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
 
-                const imageResponse = await axios({
-                    url: imageUrl,
-                    method: "GET",
-                    responseType: "stream"
-                });
+                try {
+                    const imageResponse = await axios({
+                        url: fullImageUrl,
+                        method: "GET",
+                        responseType: "stream"
+                    });
 
-                const writer = fs.createWriteStream(filePath);
-                imageResponse.data.pipe(writer);
+                    const writer = fs.createWriteStream(filePath);
+                    imageResponse.data.pipe(writer);
 
-                writer.on("finish", () => {
-                    msg.attachment = fs.createReadStream(filePath);
-                    api.sendMessage(msg, threadID, () => fs.unlinkSync(filePath));
-                });
+                    writer.on("finish", () => {
+                        msg.attachment = fs.createReadStream(filePath);
+                        api.sendMessage(msg, threadID, () => fs.unlinkSync(filePath));
+                    });
+                } catch (e) {
+                    // If image fails, just send text
+                    api.sendMessage(msg, threadID, messageID);
+                }
             } else {
                 api.sendMessage(msg, threadID, messageID);
             }
             api.setMessageReaction("✅", messageID, () => {}, true);
 
         } catch (error) {
-            console.error("Wiki Error:", error.message);
+            console.error("DDG Wiki Error:", error.message);
             api.setMessageReaction("❌", messageID, () => {}, true);
-            
-            if (error.response && error.response.status === 404) {
-                return api.sendMessage("❌ Topic not found.", threadID, messageID);
-            }
-            return api.sendMessage("❌ Could not fetch from Wikipedia.", threadID, messageID);
+            api.sendMessage("❌ Error fetching data.", threadID, messageID);
         }
     }
 };
