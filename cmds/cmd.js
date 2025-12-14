@@ -3,34 +3,28 @@ module.exports = {
     usePrefix: false,
     admin: true,
     usage: "cmd",
-    version: "1.0",
     description: "Show admin-only commands.",
-    cooldown: 5,
 
     async execute({ api, event }) {
-        const { threadID, messageID } = event;
-
         const adminCommands = Array.from(global.commands.values())
             .filter(cmd => cmd.admin === true)
-            .sort((a, b) => a.name.localeCompare(b.name));
+            .map(cmd => cmd.name)
+            .sort();
 
         if (adminCommands.length === 0) {
-            return api.sendMessage("❌ No admin commands found.", threadID, messageID);
+            return api.sendMessage("❌ No admin commands found.", event.threadID);
         }
-
-        const formatted = adminCommands.map((cmd, i) =>
-            `${i + 1}. ${cmd.name}\n   Usage: ${cmd.usage}\n   Version: ${cmd.version}`
-        ).join("\n\n");
 
         const msg = `
 ╔════════════╗
-   🔐 Admin Commands
+   🔐 ADMIN COMMANDS
 ╚════════════╝
 
-${formatted}
+${adminCommands.join(", ")}
 
-Only accessible by bot owner.`;
+⚠️ authorized personnel only.
+`;
 
-        return api.sendMessage(msg, threadID, messageID);
+        return api.sendMessage(msg, event.threadID);
     }
 };
