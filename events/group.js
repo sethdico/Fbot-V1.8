@@ -4,42 +4,33 @@ module.exports = {
     async execute({ api, event }) {
         if (event.logMessageType === "log:subscribe") {
             try {
+                // Get fresh thread info
                 const threadInfo = await api.getThreadInfo(event.threadID);
-                const totalMembers = threadInfo.participantIDs.length;
-                const botID = api.getCurrentUserID();
-
+                const { threadName, participantIDs } = threadInfo;
                 const newUsers = event.logMessageData.addedParticipants;
+
                 for (const user of newUsers) {
-                    const userID = user.userFbId;
-                    const userName = user.fullName || "there";
+                    if (user.userFbId === api.getCurrentUserID()) {
+                        // If Bot is added, send a general greeting
+                        api.sendMessage(`👋 Hello everyone! I am amadeusbot. Made by asher\nType /help to see my commands.`, event.threadID);
+                        api.changeNickname("amadeusbot", event.threadID, api.getCurrentUserID());
+                        continue;
+                    }
 
-                    const mentions = [
-                        { tag: `@${userName}`, id: userID },
-                        { tag: "@Admin", id: "100052951819398" },
-                        { tag: "@BotCreator", id: "100052951819398" }
-                    ];
-
-                    const message = {
-                        body: `👋 Welcome @${userName} to the group!
-👥 Total members: ${totalMembers}
-
-
-👨‍💻[ADMIN] @Mark: Pm any message to the bobong owner ng bot if you see problem 
-
-Bot creator:  @BotCreator`,
-                        mentions
+                    // Welcome the user
+                    const userName = user.fullName || "New Member";
+                    const welcomeMsg = {
+                        body: `👋 Welcome to ${threadName || "the group"}, @${userName}!\n👥 You are member #${participantIDs.length}.`,
+                        mentions: [{ tag: `@${userName}`, id: user.userFbId }]
                     };
 
-                    await api.sendMessage(message, event.threadID);
-
-                    // Set bot nickname if it's the one added
-                    if (userID === botID) {
-                        const newNickname = "Bot Assistant";
-                        await api.changeNickname(newNickname, event.threadID, botID);
-                    }
+                    await api.sendMessage(welcomeMsg, event.threadID);
+                    
+                    // 🛡️ SAFETY DELAY: Wait 2s if multiple people are added
+                    await new Promise(r => setTimeout(r, 2000));
                 }
             } catch (err) {
-                console.error("❌ Error in group event:", err);
+                console.error("Group event error:", err);
             }
         }
     }
