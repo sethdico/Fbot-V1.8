@@ -2,11 +2,11 @@ const axios = require("axios");
 
 module.exports = {
     name: "quillbot",
-    aliases: ["rewrite", "rephrase", "fix"],
+    aliases: ["qbot", "quill", "qui"],
     usePrefix: false,
     usage: "quillbot <text>",
     version: "2.0", // Stream Decoder Version
-    description: "Rewrites text (Handles Complex Streams).",
+    description: "quillbot ai chat.",
     cooldown: 5,
 
     execute: async ({ api, event, args }) => {
