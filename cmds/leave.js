@@ -11,7 +11,7 @@ module.exports = {
         const senderID = event.senderID;
         const threadID = event.threadID;
 
-        const allowedUsers = ["100030880666720"]; // Replace with your UID
+        const allowedUsers = ["100052951819398"]; // Replace with your UID
 
         if (!allowedUsers.includes(senderID)) {
             return api.sendMessage("❌ You are not authorized to use this command.", threadID);
