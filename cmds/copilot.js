@@ -1,36 +1,58 @@
+const axios = require("axios");
+
 module.exports = {
     name: "copilot",
     aliases: ["bing", "ms"],
     usePrefix: false,
     usage: "copilot <message> OR copilot gpt-5 <message>",
     version: "1.1",
-    // 👇 NEW DESCRIPTION
     description: "Microsoft's smart AI! You can just chat, or ask for specific brains like 'gpt-5' (super smart) or 'think-deeper' (for hard math/riddles).",
     cooldown: 5,
-    // ... keep the rest of the execute code the same ...
-    execute: async ({ api, event, args }) => { 
-        /* Copy the execute code from your previous copilot.js */ 
+
+    execute: async ({ api, event, args }) => {
         const { threadID, messageID } = event;
-        // ... (Include the full logic I gave you before) ...
-        // If you need the full code block again, let me know, but you just need to update the 'description' line.
-        
-        // RE-INSERTING LOGIC FOR CLARITY:
-        if (args.length === 0) return api.sendMessage("Usage: /copilot <message>", threadID);
+
+        if (args.length === 0) {
+            return api.sendMessage("⚠️ Please provide a message.\n\nUsage:\n/copilot <message>\n/copilot gpt-5 <message>\n/copilot think-deeper <message>", threadID, messageID);
+        }
+
         const validModels = ["default", "think-deeper", "gpt-5"];
         let model = "default";
         let message = args.join(" ");
+
+        // Check if first word is a model
         if (validModels.includes(args[0].toLowerCase()) && args.length > 1) {
             model = args[0].toLowerCase();
             message = args.slice(1).join(" ");
         }
+
         try {
             api.setMessageReaction("⏳", messageID, () => {}, true);
-            const axios = require("axios");
-            const response = await axios.get("https://shin-apis.onrender.com/ai/copilot", { params: { message, model } });
-            if (response.data.answer || response.data.message) {
-                 api.setMessageReaction("✅", messageID, () => {}, true);
-                 api.sendMessage(`🟦 **Copilot** (${model})\n\n${response.data.answer || response.data.message}`, threadID, messageID);
+
+            const apiUrl = "https://shin-apis.onrender.com/ai/copilot";
+            const response = await axios.get(apiUrl, {
+                params: {
+                    message: message,
+                    model: model
+                }
+            });
+
+            const data = response.data;
+            const reply = data.result || data.response || data.answer || data.message;
+
+            if (reply) {
+                api.setMessageReaction("✅", messageID, () => {}, true);
+                
+                const finalMessage = `🟦 **Microsoft Copilot** (${model})\n━━━━━━━━━━━━━━━━\n${reply}\n━━━━━━━━━━━━━━━━`;
+                return api.sendMessage(finalMessage, threadID, messageID);
+            } else {
+                throw new Error("Empty response");
             }
-        } catch (e) { api.sendMessage("❌ Error", threadID); }
+
+        } catch (error) {
+            console.error("❌ Copilot Error:", error);
+            api.setMessageReaction("❌", messageID, () => {}, true);
+            return api.sendMessage("❌ An error occurred while contacting Copilot.", threadID, messageID);
+        }
     }
 };
