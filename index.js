@@ -111,11 +111,13 @@ loadEvents();
 loadCommands();
 
 function sendToOwner(api, text) {
-  try {
-    api.sendMessage(text, config.ownerID);
-  } catch (err) {
-    console.error('❌ Failed to notify owner:', err);
-  }
+  if (!config.ownerID) return;
+  // Add a callback function (err) => {} to catch errors so the bot doesn't crash
+  api.sendMessage(text, config.ownerID, (err) => {
+    if (err) {
+       console.log("⚠️ Could not send startup message to owner. (Check if you are friends with the bot).");
+    }
+  });
 }
 
 function userCooldownCheck(userId) {
