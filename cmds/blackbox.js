@@ -4,34 +4,38 @@ module.exports = {
     name: "blackbox",
     aliases: ["bb", "box"],
     usePrefix: false,
-    usage: "blackbox <question>",
-    version: "1.0",
-    description: "A programmer AI! It is super good at writing code and answering tech questions.",
+    usage: "blackbox <message>",
+    version: "2.0",
+    description: "Conversational Blackbox AI. It remembers who you are.",
     cooldown: 5,
 
     execute: async ({ api, event, args }) => {
         const { threadID, messageID, senderID } = event;
         const prompt = args.join(" ");
 
+        // Check if user provided input
         if (!prompt) {
-            return api.sendMessage("⚠️ Please provide a question.\nUsage: /blackbox <question>", threadID, messageID);
+            return api.sendMessage("⚠️ Please provide a message.\nUsage: /blackbox <message>", threadID, messageID);
         }
 
         try {
+            // 1. React to indicate processing
             api.setMessageReaction("⏳", messageID, () => {}, true);
 
-            const apiUrl = "https://rapido.zetsu.xyz/api/blackbox";
+            // 2. Call the New API URL
+            const apiUrl = "https://api.zetsu.xyz/api/blackbox";
             
             const response = await axios.get(apiUrl, {
                 params: {
-                    query: prompt,
-                    id: senderID,
-                    apikey: "rapi_566265dea6d44e16b5149ee816dcf143"
+                    prompt: prompt,
+                    uid: senderID // Passes User ID for conversational context
                 }
             });
 
             const data = response.data;
-            const reply = data.message || data.response || data.result || data.data;
+            
+            // 3. Extract the answer (Handles common response variations)
+            const reply = data.response || data.message || data.result || data.answer;
 
             if (reply) {
                 api.setMessageReaction("✅", messageID, () => {}, true);
@@ -45,7 +49,7 @@ module.exports = {
         } catch (error) {
             console.error("❌ Blackbox Error:", error);
             api.setMessageReaction("❌", messageID, () => {}, true);
-            return api.sendMessage("❌ An error occurred.", threadID, messageID);
+            return api.sendMessage("❌ An error occurred while connecting to Blackbox AI.", threadID, messageID);
         }
     }
 };
