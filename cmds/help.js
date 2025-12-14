@@ -1,72 +1,70 @@
 module.exports = {
     name: "help",
     usePrefix: false,
-    usage: "help [command_name] (optional) | help all",
-    version: "1.3",
+    usage: "help [command] | help all",
+    version: "2.1",
 
     execute({ api, event, args }) {
         const { threadID, messageID } = event;
 
+        // 1. Filter out duplicates using Set
+        const uniqueCommands = [...new Set(global.commands.values())];
+
+        // 2. Sort commands A-Z
+        const sortedCommands = uniqueCommands.sort((a, b) => a.name.localeCompare(b.name));
+
         if (args.length > 0) {
             const commandName = args[0].toLowerCase();
 
+            // === SHOW ALL COMMANDS ===
             if (commandName === "all") {
-                // Show all non-admin commands in alphabetical order
-                const allCommands = Array.from(global.commands.values())
-                    .filter(cmd => !cmd.admin)
-                    .sort((a, b) => a.name.localeCompare(b.name))
-                    .map((cmd, index) => `${index + 1}. ${cmd.name} (${cmd.usePrefix ? "uses prefix" : "no prefix"})\n   Usage: ${cmd.usage}`)
+                const allCommands = sortedCommands
+                    .filter(cmd => !cmd.admin) // Hide admin commands
+                    .map((cmd) => {
+                        return `🔹 **${cmd.name}**\n📖 ${cmd.description || "No description."}\n⌨️ ${cmd.usage}`;
+                    })
                     .join("\n\n");
 
-                const allHelpMessage = `
+                const msg = `
 ╔════════════╗
-     🤖 All Commands 🤖
+   🤖 ALL COMMANDS
 ╚════════════╝
 ${allCommands}
-
-Use 'help [command_name]' for details.`;
-
-                return api.sendMessage(allHelpMessage, threadID, messageID);
+`;
+                return api.sendMessage(msg, threadID, messageID);
             }
 
-            // Show details for a specific command (including admin-only)
-            const command = global.commands.get(commandName);
+            // === SHOW SINGLE COMMAND ===
+            const cmd = global.commands.get(commandName);
+            if (!cmd) return api.sendMessage(`❌ Command not found.`, threadID, messageID);
 
-            if (!command) {
-                return api.sendMessage(`❌ Command '${commandName}' not found.`, threadID, messageID);
-            }
-
-            const commandHelpMessage = `
+            const msg = `
 ╔════════════╗
-     🤖 Command Info 🤖
+   🤖 COMMAND INFO
 ╚════════════╝
-Name: ${command.name}
-Usage: ${command.usage}
-Prefix Required: ${command.usePrefix ? "✅ Yes" : "❌ No"}
-Admin Only: ${command.admin ? "✅ Yes" : "❌ No"}
-Version: ${command.version}`;
-
-            return api.sendMessage(commandHelpMessage, threadID, messageID);
+🔹 Name: ${cmd.name}
+📖 What it does: ${cmd.description}
+⌨️ How to use: ${cmd.usage}
+🔗 Aliases: ${cmd.aliases ? cmd.aliases.join(", ") : "None"}
+`;
+            return api.sendMessage(msg, threadID, messageID);
         }
 
-        // Show only 5 random non-admin commands
-        const commandArray = Array.from(global.commands.values())
+        // === MAIN MENU (Short List) ===
+        // Just shows names to keep it clean
+        const featured = sortedCommands
             .filter(cmd => !cmd.admin)
-            .sort((a, b) => a.name.localeCompare(b.name))
-            .slice(0, 5)
-            .map((cmd, index) => `${index + 1}. ${cmd.name} (${cmd.usePrefix ? "uses prefix" : "no prefix"})\n   Usage: ${cmd.usage}`)
-            .join("\n\n");
+            .map(cmd => `• ${cmd.name}`)
+            .join("\n");
 
-        const helpMessage = `
+        api.sendMessage(`
 ╔════════════╗
-     🤖 Bot Commands 🤖
+   🤖 BOT MENU
 ╚════════════╝
-Here are some commands:  
-${commandArray}
+${featured}
 
-Use 'help all' to see all commands.
-Use 'help [command_name]' for details.`;
-
-        api.sendMessage(helpMessage, threadID, messageID);
+💡 Type **"help all"** to see what each command does!
+💡 Type **"help <command>"** for specific details.
+`, threadID, messageID);
     }
 };
