@@ -1,42 +1,22 @@
-// ================================================
-// FILE: custom.js
-// ================================================
 const cron = require('node-cron');
 
-const scheduleTasks = (ownerID, api, config = { autoRestart: true, autoGreet: false }) => {
-    console.log("✅ Scheduler initialized with Human Jitter.");
+const scheduleTasks = (ownerID, api, config = { autoRestart: true }) => {
+    console.log("✅ Scheduler initialized.");
 
-    // Helper: Random delay between min and max minutes
-    const randomJitter = (minMinutes, maxMinutes) => {
-        return (Math.floor(Math.random() * (maxMinutes - minMinutes + 1)) + minMinutes) * 60 * 1000;
-    };
+    const randomJitter = (min, max) => (Math.floor(Math.random() * (max - min + 1)) + min) * 60 * 1000;
 
-    // 📌 Auto-Restart with Jitter
     if (config.autoRestart) {
-        // Scheduled for: 6AM, 12PM, 6PM, 12AM
-        const restartTimes = ['0 6 * * *', '0 12 * * *', '0 18 * * *', '0 0 * * *'];
-
-        restartTimes.forEach(time => {
+        // Restart at 6AM, 12PM, 6PM, 12AM
+        ['0 6 * * *', '0 12 * * *', '0 18 * * *', '0 0 * * *'].forEach(time => {
             cron.schedule(time, () => {
-                // DON'T restart immediately. Wait 1 to 15 minutes randomly.
-                const jitter = randomJitter(1, 15);
-                console.log(`⏰ Cron triggered. Waiting ${jitter / 1000}s to simulate human inconsistency...`);
+                const delay = randomJitter(1, 10); // Wait 1-10 mins
+                console.log(`⏰ Scheduled restart. Waiting ${delay/1000}s...`);
                 
                 setTimeout(() => {
-                    api.sendMessage("💤 Taking a quick nap (Restarting)...", ownerID, () => {
-                        process.exit(1);
-                    });
-                }, jitter);
+                    api.sendMessage("🔄 System Refreshing...", ownerID, () => process.exit(1));
+                }, delay);
             }, { timezone: "Asia/Manila" });
         });
-
-        console.log("✅ Auto-restart scheduler started.");
-    } else {
-        console.log("❌ Auto-restart is disabled.");
-    }
-
-    if (config.autoGreet) {
-        console.log("⚠️ Auto-greet kept disabled for safety.");
     }
 };
 
