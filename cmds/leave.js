@@ -1,9 +1,11 @@
+const config = require("../config.json"); // Import config to use YOUR ID
+
 module.exports = {
     name: "leave",
     usePrefix: false,
     description: "Make the bot leave a group or list groups.",
     usage: "leave [list | number]",
-    version: "1.3",
+    version: "1.4", // Bumped version
     cooldown: 5,
     admin: true,
 
@@ -11,13 +13,11 @@ module.exports = {
         const senderID = event.senderID;
         const threadID = event.threadID;
 
-        const allowedUsers = ["100052951819398"]; // Replace with your UID
-
-        if (!allowedUsers.includes(senderID)) {
+        // FIX: Use config.ownerID instead of hardcoded ID
+        if (senderID !== config.ownerID && !config.admin.includes(senderID)) {
             return api.sendMessage("❌ You are not authorized to use this command.", threadID);
         }
 
-        // Restrict basic "leave" command in private chat
         if (!args[0] && event.isGroup === false) {
             return api.sendMessage("⚠️ You can't use `leave` in private chat. Use `leave list` or `leave <number>` instead.", threadID);
         }
@@ -45,19 +45,18 @@ module.exports = {
         };
 
         if (!args[0]) {
-            // leave current group
             return api.sendMessage(tagEveryone, threadID, () => {
                 api.removeUserFromGroup(api.getCurrentUserID(), threadID);
             });
         }
 
-        // leave specific group
+        // FIX: Crash prevention
         const index = parseInt(args[0]) - 1;
-        const group = groupThreads[index];
-
-        if (!group) {
+        if (isNaN(index) || index < 0 || index >= groupThreads.length) {
             return api.sendMessage("❌ Invalid group number.", threadID);
         }
+
+        const group = groupThreads[index];
 
         try {
             await api.sendMessage(tagEveryone, group.threadID, () => {
