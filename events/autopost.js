@@ -1,68 +1,37 @@
 const cron = require('node-cron');
-const path = require('path');
-const fs = require('fs');
-
-// Helper to load config safely
-function loadConfig() {
-    try {
-        const configPath = path.resolve(__dirname, '../config.json');
-        return JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    } catch (e) {
-        return { ownerID: "" };
-    }
-}
+const axios = require('axios'); // Use axios instead of fetch for older node versions
 
 module.exports = {
     name: "autoPost",
-    execute: async (api, event) => {
-        console.log("Auto-post event triggered.");
-    },
+    // This function runs when the bot starts
     onStart: async (api) => {
-        const config = loadConfig();
-        const ownerID = config.ownerID; // FIX: Now dynamic
+        console.log("📅 AutoPost Scheduler: STARTED");
 
-        const fetchCatFact = async () => {
+        const postFact = async () => {
             try {
-                const response = await fetch("https://kaiz-apis.gleeze.com/api/catfact");
-                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
-                const data = await response.json();
-                return data.fact;
-            } catch (error) {
-                console.error("Error fetching cat fact:", error);
-                return null;
+                // Get a random cat fact
+                const res = await axios.get("https://catfact.ninja/fact");
+                const fact = res.data.fact;
+
+                if (fact) {
+                    api.createPost({ body: `🐱 **Daily Cat Fact**\n\n${fact}` })
+                       .then(url => console.log(`✅ AutoPost Success: ${url}`))
+                       .catch(e => console.error("❌ AutoPost Failed:", e));
+                }
+            } catch (e) {
+                console.error("❌ Error fetching fact:", e.message);
             }
         };
 
-        const createPost = async () => {
-            const catFact = await fetchCatFact();
-
-            if (catFact) {
-                api.createPost({ body: catFact })
-                    .then((url) => {
-                        const msg = url ? `✅ Auto-post created!\n🔗 ${url}` : "✅ Auto-post created (No URL).";
-                        console.log(msg);
-                        if (ownerID) api.sendMessage(msg, ownerID);
-                    })
-                    .catch((error) => {
-                        console.error("❌ Error creating post:", error);
-                    });
-            }
-        };
-
-        const autopostSchedules = [
-            { cronTime: '0 6 * * *' }, 
-            { cronTime: '0 12 * * *' }, 
-            { cronTime: '0 18 * * *' }, 
-            { cronTime: '0 0 * * *' }, 
-        ];
-
-        for (const schedule of autopostSchedules) {
-            cron.schedule(schedule.cronTime, () => {
-                console.log(`🕒 Scheduled auto-post triggered.`);
-                createPost();
+        // Schedule: 7AM, 1PM, 7PM (Manila Time)
+        const times = ['0 7 * * *', '0 13 * * *', '0 19 * * *'];
+        
+        times.forEach(time => {
+            cron.schedule(time, () => {
+                console.log("⏰ Triggering AutoPost...");
+                postFact();
             }, { timezone: "Asia/Manila" });
-        }
-
-        console.log("✅ Auto-post scheduler started.");
+        });
     },
+    execute: async () => {} // Not used for message events
 };
