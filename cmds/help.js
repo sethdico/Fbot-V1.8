@@ -2,21 +2,31 @@ module.exports = {
     name: "help",
     usePrefix: false,
     usage: "help [command] | help all",
-    version: "3.1",
+    version: "4.0", // Organized Version
     description: "Shows commands categorized for easier reading.",
 
     execute({ api, event, args }) {
         const { threadID, messageID } = event;
 
-        // 🔧 FIX: Use a Set to remove duplicate objects caused by aliases
+        // 🔧 Filter unique commands to prevent duplicates in "Others"
         const commands = [...new Set(global.commands.values())];
 
-        // 1. Define your Categories (I added 'dict' and 'rabbit' here)
+        // 1. Define your Categories (Updated as requested)
         const categories = {
-            "🤖 AI & Chat": ["ai", "aria", "blackbox", "chipp", "copilot", "geminivision", "openrouter", "perplexity", "venice", "deepimg", "rabbit"],
-            "⚙️ Admin & Group": ["add", "leave", "notify", "unsend", "changeavatar", "post", "cmd"],
-            "🛠️ Tools & Search": ["google", "wiki", "screenshot", "translate", "webcopilot", "say", "shoti", "dict"],
-            "ℹ️ System": ["help", "prefix", "ping", "uptime"]
+            "🤖 AI & Chat": [
+                "ai", "aria", "copilot", "venice", 
+                "phind", "quillbot"
+            ],
+            "⚙️ Admin & Group": [
+                "add", "leave", "notify", "unsend", "changeavatar", "post", "cmd"
+            ],
+            "🛠️ Tools & Search": [
+                "wiki", "screenshot", "translate", "webcopilot", "dict", 
+                "deepimg", "bible" 
+            ],
+            "ℹ️ System": [
+                "help", "prefix", "uptime"
+            ]
         };
 
         // 2. Logic to handle specific command help (e.g., "help ai")
