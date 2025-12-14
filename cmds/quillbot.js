@@ -1,73 +1,75 @@
 const axios = require("axios");
 
 module.exports = {
-    name: "phind",
-    aliases: ["phi", "askphind"],
+    name: "quillbot",
+    aliases: ["rewrite", "rephrase", "fix"],
     usePrefix: false,
-    usage: "phind <question>",
-    version: "2.0", // Stream-Decoder Version
-    description: "Ask Phind AI (Smart Search Engine).",
+    usage: "quillbot <text>",
+    version: "2.0", // Stream Decoder Version
+    description: "Rewrites text (Handles Complex Streams).",
     cooldown: 5,
 
     execute: async ({ api, event, args }) => {
         const { threadID, messageID } = event;
-        const question = args.join(" ");
+        const prompt = args.join(" ");
 
-        if (!question) {
-            return api.sendMessage("⚠️ Please ask a question.\nUsage: phind who created facebook", threadID, messageID);
+        if (!prompt) {
+            return api.sendMessage("⚠️ Please provide text.\nUsage: quillbot hello world", threadID, messageID);
         }
 
         try {
-            api.setMessageReaction("🧠", messageID, () => {}, true);
+            api.setMessageReaction("✍️", messageID, () => {}, true);
 
-            const apiUrl = "https://api.ccprojectsapis-jonell.gleeze.com/api/phindai";
+            const apiUrl = "https://api.ccprojectsapis-jonell.gleeze.com/api/ai/quillbotai";
             
             const response = await axios.get(apiUrl, {
-                params: { q: question }
+                params: { prompt: prompt }
             });
 
-            // The API returns a massive string "Stream"
-            const rawStream = response.data.response; 
-            
-            let reply = "";
+            // The API returns the stream inside response.data.response
+            const rawStream = response.data.response;
+            let finalReply = "";
 
-            // 🔧 DECODER LOGIC
-            // We look for the specific section "event: output_done" which contains the full answer
+            // 1. Check if the "output_done" event exists (This holds the full answer)
             if (rawStream && rawStream.includes("event: output_done")) {
                 try {
-                    // 1. Split the text to find the end part
-                    const parts = rawStream.split("event: output_done");
-                    // 2. Get the part after output_done, and split by "data: "
-                    const dataPart = parts[1].split("data: ")[1];
-                    // 3. Clean it up until the next event starts
-                    const jsonString = dataPart.split("event: status")[0].trim();
+                    // Split the text to find the part after "output_done"
+                    const splitStream = rawStream.split("event: output_done");
                     
-                    // 4. Parse the hidden JSON
-                    const parsedData = JSON.parse(jsonString);
-                    reply = parsedData.text;
+                    // Get the data line immediately following it
+                    // The format is: event: output_done\ndata: { ... JSON ... }
+                    const dataPart = splitStream[1].split("data: ")[1];
 
-                } catch (e) {
-                    console.error("Parsing Error:", e);
-                    reply = "❌ Error decoding the AI stream.";
+                    // Clean it up: Stop reading if another event starts
+                    const jsonString = dataPart.split("event: status")[0].trim();
+
+                    // Parse the hidden JSON
+                    const parsedData = JSON.parse(jsonString);
+                    
+                    // The answer is inside .text
+                    finalReply = parsedData.text;
+
+                } catch (parseError) {
+                    console.error("Stream Parsing Error:", parseError);
                 }
-            } else {
-                // Fallback for normal messages
-                reply = response.data.message || response.data.result;
+            } 
+            // 2. Fallback: If not a stream, try standard keys
+            else {
+                finalReply = response.data.result || response.data.message;
             }
 
-            if (reply) {
-                // Clean up Markdown links slightly if they are messy
-                const finalMsg = `🧠 **Phind AI**\n━━━━━━━━━━━━━━━━\n${reply}\n━━━━━━━━━━━━━━━━`;
+            if (finalReply) {
+                const finalMsg = `✍️ **Quillbot**\n━━━━━━━━━━━━━━━━\n${finalReply}\n━━━━━━━━━━━━━━━━`;
                 api.sendMessage(finalMsg, threadID, messageID);
                 api.setMessageReaction("✅", messageID, () => {}, true);
             } else {
-                throw new Error("Empty response");
+                throw new Error("Could not decode stream.");
             }
 
         } catch (error) {
-            console.error("Phind Error:", error.message);
+            console.error("Quillbot Error:", error.message);
             api.setMessageReaction("❌", messageID, () => {}, true);
-            api.sendMessage("❌ Phind AI is currently unreachable.", threadID, messageID);
+            api.sendMessage("❌ Failed to process the AI response.", threadID, messageID);
         }
     }
 };
