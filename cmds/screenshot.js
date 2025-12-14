@@ -4,12 +4,12 @@ const path = require("path");
 
 module.exports = {
     name: "screenshot",
-    aliases: ["ss", "webshot"], // You can also type "ss" or "webshot"
+    aliases: ["ss", "webshot"], 
     usePrefix: false,
     usage: "screenshot <url>",
     version: "1.0",
-    description: "Takes a live screenshot of a website.",
-    cooldown: 10, // Screenshots take time, so a higher cooldown is good
+    description: "Takes a picture (screenshot) of any website link you send it.",
+    cooldown: 10, 
 
     execute: async ({ api, event, args }) => {
         const { threadID, messageID } = event;
@@ -20,16 +20,13 @@ module.exports = {
         }
 
         try {
-            // 1. React to show the bot is working
             api.setMessageReaction("⏳", messageID, () => {}, true);
 
-            // 2. Call the Screenshot API
             const apiUrl = `https://norch-project.gleeze.com/api/screenshot?url=${encodeURIComponent(targetUrl)}`;
             const response = await axios.get(apiUrl);
 
             const data = response.data;
 
-            // Check if the API returned a valid screenshot URL
             if (!data.success || !data.screenshot) {
                 api.setMessageReaction("❌", messageID, () => {}, true);
                 return api.sendMessage("❌ Failed to capture screenshot. The website might be unavailable.", threadID, messageID);
@@ -38,13 +35,11 @@ module.exports = {
             const screenshotUrl = data.screenshot;
             const filePath = path.join(__dirname, "cache", `screenshot_${Date.now()}.jpg`);
             
-            // Ensure cache directory exists
             const cacheDir = path.join(__dirname, "cache");
             if (!fs.existsSync(cacheDir)) {
                 fs.mkdirSync(cacheDir, { recursive: true });
             }
 
-            // 3. Download the image
             const imageResponse = await axios({
                 url: screenshotUrl,
                 method: "GET",
@@ -55,7 +50,6 @@ module.exports = {
             imageResponse.data.pipe(writer);
 
             writer.on("finish", () => {
-                // 4. Send the image
                 api.setMessageReaction("✅", messageID, () => {}, true);
                 
                 const msg = {
@@ -64,7 +58,6 @@ module.exports = {
                 };
 
                 api.sendMessage(msg, threadID, () => {
-                    // 5. Delete the file after sending to save space
                     fs.unlinkSync(filePath);
                 });
             });
