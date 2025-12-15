@@ -18,11 +18,11 @@ module.exports = {
             ],
             "⚙️ Admin & Group": [
                 "add", "leave", "notify", "unsend", "changeavatar", "post", "cmd", 
-                "kick", "restart" // 🟢 Added new commands here
+                "kick", "restart", "antiunsent", "welcome" // 🟢 Added new commands here
             ],
             "🛠️ Tools & Search": [
                 "screenshot", "translate", "webcopilot", "dict", 
-                "deepimg", "bible" 
+                "deepimg", "bible", "8ball", "remind"
             ],
             "ℹ️ System": [
                 "help", "prefix", "uptime"
