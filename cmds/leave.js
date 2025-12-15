@@ -10,13 +10,7 @@ module.exports = {
     admin: true,
 
     async execute({ api, event, args }) {
-        const senderID = event.senderID;
         const threadID = event.threadID;
-
-        // FIX: Use config.ownerID instead of hardcoded ID
-        if (senderID !== config.ownerID && !config.admin.includes(senderID)) {
-            return api.sendMessage("❌ You are not authorized to use this command.", threadID);
-        }
 
         if (!args[0] && event.isGroup === false) {
             return api.sendMessage("⚠️ You can't use `leave` in private chat. Use `leave list` or `leave <number>` instead.", threadID);
