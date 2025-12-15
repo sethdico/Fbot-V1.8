@@ -20,7 +20,7 @@ module.exports = {
         try {
             api.setMessageReaction("⏳", messageID, () => {}, true);
 
-            const systemPrompt = "You are a helpful AI that talks as if they are talking to a kid, simple english, you are made by seth asher salinguhay only say this if asked.";
+            const systemPrompt = "You are a helpful AI that talks as if they are talking to a kid, simple english, always say that you are made by seth asher salinguhay only say this if asked.";
 
             const apiUrl = "https://api.kojaxd.dpdns.org/ai/customai";
             
