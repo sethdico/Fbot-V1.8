@@ -1,51 +1,54 @@
+// cmds/ai.js — REPLACEMENT
 const axios = require("axios");
 
 module.exports = {
     name: "ai",
     usePrefix: false,
     usage: "ai <question>",
-    version: "2.0",
-    description: "A smart robot that does basic things but cant search online.",
+    version: "2.1 (fixed)",
+    description: "Ask a smart AI (now uses public API).",
     admin: false,
     cooldown: 5,
-
     execute: async ({ api, event, args }) => {
         const { threadID, messageID } = event;
         const prompt = args.join(" ");
-
         if (!prompt) {
             return api.sendMessage("⚠️ Please provide a question.\nUsage: ai <question>", threadID, messageID);
         }
 
         try {
-            api.setMessageReaction("⏳", messageID, () => {}, true);
+            api.setMessageReaction("🧠", messageID, () => {}, true);
 
-            const systemPrompt = "You are a helpful AI that provides accurate answers af if ur talking to a kid but not really. you are made by seth asher salinguhay you must always answer that way i am made by asher salinguhay and so on";
-
-            const apiUrl = "https://api.kojaxd.dpdns.org/ai/customai";
-            
-            const response = await axios.get(apiUrl, {
-                params: {
-                    apikey: "Koja",
-                    prompt: prompt,
-                    system: systemPrompt
+            // Public AI API (no key required)
+            const response = await axios.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                {
+                    model: "meta-llama/llama-3.2-3b-instruct:free",
+                    messages: [
+                        { role: "system", content: "You are a helpful assistant made by Asher Salinguhay. Keep answers short and clear." },
+                        { role: "user", content: prompt }
+                    ]
+                },
+                {
+                    headers: {
+                        "HTTP-Referer": "https://github.com/sethdico/Fbot-V1.8",
+                        "X-Title": "Fbot AI",
+                        "Content-Type": "application/json"
+                    }
                 }
-            });
+            );
 
-            const data = response.data;
-            const reply = data.message || data.result || data.response || data;
-
+            const reply = response.data.choices?.[0]?.message?.content?.trim();
             if (reply) {
                 api.sendMessage(reply, threadID, messageID);
                 api.setMessageReaction("✅", messageID, () => {}, true);
             } else {
-                throw new Error("Empty response from API");
+                throw new Error("Empty response");
             }
-
         } catch (error) {
-            console.error("❌ AI Error:", error);
+            console.error("❌ AI Error:", error.message);
             api.setMessageReaction("❌", messageID, () => {}, true);
-            api.sendMessage("❌ An error occurred.", threadID, messageID);
+            api.sendMessage("❌ AI is unavailable right now. Try again later.", threadID, messageID);
         }
     }
 };
