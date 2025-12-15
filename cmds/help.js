@@ -14,7 +14,7 @@ module.exports = {
         // 1. Define your Categories
         const categories = {
             "🤖 AI & Chat": [
-                "ai", "aria", "copilot", "venice", "quillbot", "webpilot", "xdash"
+                "ai", "aria", "copilot", "venice", "quillbot", "webpilot", "xdash", "gptnano", "gemini"
             ],
             "⚙️ Admin & Group": [
                 "add", "leave", "notify", "unsend", "changeavatar", "post", "cmd", 
