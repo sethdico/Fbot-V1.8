@@ -1,9 +1,7 @@
 {
-  "ownerID": "100093157180148",
-  "botName": "Amadeus",
   "prefix": "/",
-  "admin": [
-    "100093157180148"
-  ],
+  "ownerID": "100093157180148",
+  "admin": ["100093157180148"],
+  "botName": "Fbot",
   "autoRestart": true
 }
