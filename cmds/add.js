@@ -11,11 +11,8 @@ module.exports = {
 
     async execute({ api, event, args }) {
         const threadID = event.threadID;
-        const senderID = event.senderID;
-
-        if (senderID !== config.ownerID) {
-            return api.sendMessage("❌ You are not authorized to use this command.", threadID);
-        }
+        // The authorization check (event.senderID === config.ownerID || config.admin.includes(event.senderID))
+        // is now handled by the main index.js, thanks to the 'admin: true' flag above.
 
         const threads = await api.getThreadList(100, null, ["INBOX"]);
         const groups = threads.filter(t => t.isGroup);
@@ -37,6 +34,7 @@ module.exports = {
         const group = groups[index];
 
         try {
+            // NOTE: This command is hardcoded to add the BOT OWNER (config.ownerID), not the person who executed the command.
             await api.addUserToGroup(config.ownerID, group.threadID);
             return api.sendMessage(`✅ Owner added to group: ${group.name || "Unnamed Group"}`, threadID);
         } catch (err) {
