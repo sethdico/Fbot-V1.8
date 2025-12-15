@@ -12,6 +12,8 @@ module.exports = {
     async execute({ api, event, args }) {
         const threadID = event.threadID;
 
+        // --- FIXED: The redundant admin check was removed here. ---
+
         if (!args[0] && event.isGroup === false) {
             return api.sendMessage("⚠️ You can't use `leave` in private chat. Use `leave list` or `leave <number>` instead.", threadID);
         }
