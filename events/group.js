@@ -1,39 +1,64 @@
+const fs = require("fs");
+const path = require("path");
+
 module.exports = {
-    name: "event",
+    name: "group_events",
 
     async execute({ api, event }) {
-        if (event.logMessageType === "log:subscribe") {
-            try {
-                const threadInfo = await api.getThreadInfo(event.threadID);
-                const { threadName, participantIDs } = threadInfo;
-                const newUsers = event.logMessageData.addedParticipants;
+        // 1. Check Settings
+        const settingsPath = path.resolve(__dirname, "..", "settings.json");
+        if (fs.existsSync(settingsPath)) {
+            const settings = JSON.parse(fs.readFileSync(settingsPath));
+            if (settings.welcome === false) return; // If OFF, do nothing
+        }
+
+        const { threadID, logMessageType, logMessageData } = event;
+
+        try {
+            // ============================
+            // 🟢 USER JOINED (Welcome)
+            // ============================
+            if (logMessageType === "log:subscribe") {
+                const threadInfo = await api.getThreadInfo(threadID);
+                const { threadName } = threadInfo;
+                const newUsers = logMessageData.addedParticipants;
 
                 for (const user of newUsers) {
-                    // If Bot is added
-                    if (user.userFbId === api.getCurrentUserID()) {
-                        api.sendMessage(`👋 Hello! I am connected.`, event.threadID);
-                        // Try-catch for nickname permissions
-                        try {
-                            await api.changeNickname("Amadeus", event.threadID, api.getCurrentUserID());
-                        } catch (e) {
-                            console.log("Could not change nickname (Permissions).");
-                        }
-                        continue;
-                    }
+                    if (user.userFbId === api.getCurrentUserID()) continue; // Ignore bot
 
-                    // Welcome User
                     const userName = user.fullName || "New Member";
-                    const welcomeMsg = {
-                        body: `👋 Welcome to ${threadName || "the group"}, @${userName}!`,
+                    
+                    const msg = {
+                        body: `👋 Welcome to ${threadName || "the group"}, @${userName}!\nEnjoy your stay!`,
                         mentions: [{ tag: `@${userName}`, id: user.userFbId }]
                     };
 
-                    await api.sendMessage(welcomeMsg, event.threadID);
-                    await new Promise(r => setTimeout(r, 1500)); // Anti-spam delay
+                    await api.sendMessage(msg, threadID);
                 }
-            } catch (err) {
-                console.error("Group event error:", err);
+            } 
+            
+            // ============================
+            // 🔴 USER LEFT (Goodbye)
+            // ============================
+            else if (logMessageType === "log:unsubscribe") {
+                const leftUserID = logMessageData.leftParticipantFbId;
+                
+                // Ignore if the bot itself left/kicked
+                if (leftUserID === api.getCurrentUserID()) return;
+
+                // Get user info to say their name
+                const userInfo = await api.getUserInfo(leftUserID);
+                const name = userInfo[leftUserID]?.name || "Facebook User";
+
+                const msg = {
+                    body: `🚪 Goodbye, ${name}.\nWe will miss you! (maybe)`,
+                };
+
+                await api.sendMessage(msg, threadID);
             }
+
+        } catch (err) {
+            console.error("Group event error:", err);
         }
     }
 };
