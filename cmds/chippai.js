@@ -1,14 +1,21 @@
 const axios = require("axios");
+const crypto = require("crypto");
 
-// Storage for the Session ID obtained from the website
+// 🧠 1. Browser-Compatible UUID Generator (Fallback)
+function generateUUID() {
+    return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c =>
+        (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+    );
+}
+
 const sessionMap = new Map();
 
 module.exports = {
     name: "chippai",
-    aliases: ["chipp", "chi", "pai"],
+    aliases: ["chipp", "chi", "pai", "dig"],
     usePrefix: false, 
-    usage: "chippai <message>",
-    description: "Chat with Chipp AI (Scrapes Real Session ID).",
+    usage: "chippai <message> (or reply to image)",
+    description: "Chat with Digital Protégé AI (Scraper Mode).",
     cooldown: 5,
 
     execute: async ({ api, event, args }) => {
@@ -17,7 +24,7 @@ module.exports = {
         let userMessage = args.join(" ");
         let imageUrl = null;
 
-        // 1. Handle Images
+        // 2. Image Detection Logic
         if (messageReply && messageReply.attachments?.[0]?.type === "photo") {
             imageUrl = messageReply.attachments[0].url;
         } else if (attachments?.[0]?.type === "photo") {
@@ -25,59 +32,40 @@ module.exports = {
         }
 
         if (!userMessage && !imageUrl) {
-            return api.sendMessage("⚠️ Please say something.", threadID, messageID);
+            return api.sendMessage("⚠️ Please say something or send an image.", threadID, messageID);
         }
 
-        // ---------------------------------------------------------
-        // 2. GET REAL SESSION ID FROM WEBSITE
-        // ---------------------------------------------------------
+        // 3. Session ID Logic (Scrape -> Fallback)
         if (!sessionMap.has(threadID)) {
+            let newSessionId = null;
             try {
-                api.setMessageReaction("🌐", messageID, () => {}, true);
-                // We visit the main page and follow the redirect to get the ID
+                // Try to scrape the real ID from the website redirect
                 const visitResponse = await axios.get("https://digitalprotg-32922.chipp.ai/", {
-                    headers: {
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
-                    }
+                    headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36" }
                 });
-
-                // The axios 'visitResponse.request.res.responseUrl' holds the final URL after redirect
-                const finalUrl = visitResponse.request.res.responseUrl;
-                console.log(`[ChippAI] Redirected to: ${finalUrl}`);
-
-                // Extract UUID from: .../session/5a20d870-e13b...
+                const finalUrl = visitResponse.request.res.responseUrl || "";
                 const match = finalUrl.match(/session\/([a-f0-9\-]+)/);
                 
-                if (match && match[1]) {
-                    sessionMap.set(threadID, match[1]);
-                } else {
-                    // Fallback: If site didn't redirect, generate one (Safety net)
-                    console.log("[ChippAI] No redirect found, generating fallback ID.");
-                    sessionMap.set(threadID, require('crypto').randomUUID());
-                }
+                if (match && match[1]) newSessionId = match[1];
+                else newSessionId = generateUUID();
 
             } catch (e) {
-                console.error("Failed to fetch session:", e.message);
-                return api.sendMessage("❌ Failed to reach the website to get a Session ID.", threadID, messageID);
+                newSessionId = generateUUID();
             }
+            sessionMap.set(threadID, newSessionId);
         }
 
         const sessionId = sessionMap.get(threadID);
-        const appSlug = "DigitalProtg-32922"; 
+        const appSlug = "digitalprotg-32922"; 
 
-        // ---------------------------------------------------------
-        // 3. SEND CHAT MESSAGE
-        // ---------------------------------------------------------
-        
-        // Simplified Payload to avoid 400 Errors
-        const messageObject = {
+        // 4. Payload Construction
+        const messages = [{
             role: "user",
             content: userMessage || "Analyze this image"
-        };
+        }];
 
         if (imageUrl) {
-            messageObject.experimental_attachments = [{
+            messages[0].experimental_attachments = [{
                 url: imageUrl,
                 contentType: "image/jpeg"
             }];
@@ -86,18 +74,15 @@ module.exports = {
         try {
             api.setMessageReaction("⏳", messageID, () => {}, true);
 
+            // 5. API Request
             const response = await axios({
                 method: "post",
                 url: "https://digitalprotg-32922.chipp.ai/api/chat",
-                data: {
-                    messages: [messageObject],
-                    sessionId: sessionId,
-                    chatId: sessionId
-                },
+                data: { messages, sessionId, chatId: sessionId },
                 responseType: "stream",
                 headers: {
                     "Host": "digitalprotg-32922.chipp.ai",
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36",
                     "Referer": `https://digitalprotg-32922.chipp.ai/w/chat/${appSlug}/session/${sessionId}`,
                     "Origin": "https://digitalprotg-32922.chipp.ai",
                     "Content-Type": "application/json"
@@ -110,33 +95,24 @@ module.exports = {
                 const lines = chunk.toString().split('\n');
                 for (const line of lines) {
                     if (line.startsWith('0:')) {
-                        try {
-                            const content = JSON.parse(line.substring(2));
-                            fullText += content;
-                        } catch (e) {}
+                        try { fullText += JSON.parse(line.substring(2)); } catch (e) {}
                     }
                 }
             });
 
             response.data.on('end', () => {
-                if (!fullText.trim()) return api.sendMessage("❌ The AI is silent.", threadID, messageID);
-                
+                if (!fullText.trim()) return api.sendMessage("❌ AI sent no text.", threadID, messageID);
                 api.setMessageReaction("✅", messageID, () => {}, true);
-                const finalMsg = `🤖 **Chipp AI**\n━━━━━━━━━━━━━━━━\n${fullText.trim()}\n━━━━━━━━━━━━━━━━`;
-                api.sendMessage(finalMsg, threadID, messageID);
+                api.sendMessage(`🤖 **Digital Protégé**\n━━━━━━━━━━━━━━━━\n${fullText.trim()}\n━━━━━━━━━━━━━━━━`, threadID, messageID);
             });
 
         } catch (error) {
-            console.error(`ChippAI Error:`, error.message);
             api.setMessageReaction("❌", messageID, () => {}, true);
-
             if (error.response?.status === 400) {
-                // If it's still 400, it might be the image format.
-                // We clear the session map so it tries to get a FRESH session next time.
-                sessionMap.delete(threadID);
-                return api.sendMessage("❌ Error 400: Bad Request. I will refresh the session for your next message.", threadID, messageID);
+                sessionMap.delete(threadID); // Reset session on error
+                return api.sendMessage("❌ Error 400: Session reset. Try again.", threadID, messageID);
             }
-            api.sendMessage(`❌ Connection Failed: ${error.message}`, threadID, messageID);
+            api.sendMessage("❌ Connection Failed.", threadID, messageID);
         }
     }
 };
