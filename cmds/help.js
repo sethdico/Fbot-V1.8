@@ -14,14 +14,14 @@ module.exports = {
         // 1. Define your Categories
         const categories = {
             "🤖 AI & Chat": [
-                "ai", "aria", "copilot", "venice", "quillbot"
+                "ai", "aria", "copilot", "venice", "quillbot", "webpilot", "xdash"
             ],
             "⚙️ Admin & Group": [
                 "add", "leave", "notify", "unsend", "changeavatar", "post", "cmd", 
                 "kick", "restart", "antiunsent", "welcome" // 🟢 Added new commands here
             ],
             "🛠️ Tools & Search": [
-                "screenshot", "translate", "webcopilot", "dict", 
+                "screenshot", "translate", "dict", 
                 "deepimg", "bible", "8ball", "remind"
             ],
             "ℹ️ System": [
