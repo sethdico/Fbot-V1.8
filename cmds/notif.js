@@ -9,9 +9,7 @@ module.exports = {
     cooldown: 60,
 
     execute: async ({ api, event, args }) => {
-        const isOwner = event.senderID === config.ownerID;
-        const isAdmin = config.admin && config.admin.includes(event.senderID);
-        if (!isOwner && !isAdmin) return;
+        // --- FIXED: The redundant admin check was removed here. ---
 
         const message = args.join(" ");
         if (!message) return api.sendMessage("⚠️ Message required.", event.threadID);
