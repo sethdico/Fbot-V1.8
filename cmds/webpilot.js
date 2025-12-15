@@ -1,8 +1,8 @@
 const axios = require("axios");
 
 module.exports = {
-    name: "webcopilot",
-    aliases: ["web", "search", "askweb", "copilotweb"],
+    name: "webpilot",
+    aliases: ["web", "pilot", "askpilot", "copilotweb"],
     usePrefix: false,
     usage: "webcopilot <question>",
     version: "2.1 (optimized)",
