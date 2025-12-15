@@ -1,6 +1,6 @@
 // events/mention.js
 module.exports = {
-    name: "message",
+    name: "message", // ⚠️ CRITICAL: Must be "message" to trigger on all texts
     execute: async ({ api, event, config }) => {
         // Only process text messages
         if (!event.body || typeof event.body !== "string") return;
@@ -10,27 +10,28 @@ module.exports = {
         const threadID = event.threadID;
         const isGroup = event.isGroup;
 
-        // In private chats: if the message looks like a greeting or mention, reply
-        if (!isGroup) {
-            const lowerBody = event.body.trim().toLowerCase();
-            // If user says "hi", "hello", or @botname in DM, reply
-            if (
-                lowerBody === "hi" ||
-                lowerBody === "hello" ||
-                lowerBody === "hey" ||
-                lowerBody.startsWith("@") ||
-                lowerBody.includes(botID.toString())
-            ) {
+        // ➤ In GROUPS: only respond if explicitly mentioned with @[BOT_ID]
+        if (isGroup) {
+            if (event.body.includes(`@[${botID}]`)) {
                 return api.sendMessage(
-                    `🤖 Hello! I'm online.\nMy prefix is: ${prefix}\nTry ${prefix}help to see commands.`,
+                    `🤖 Hello! I am online.\nMy prefix is: ${prefix}\nType ${prefix}help to see commands.`,
                     threadID,
                     event.messageID
                 );
             }
         }
-        // In groups: only respond if explicitly mentioned with @[BOT_ID]
+        // ➤ In PRIVATE CHATS: treat any message that looks like a greeting as a mention
         else {
-            if (event.body.includes(`@[${botID}]`)) {
+            const lowerBody = event.body.trim().toLowerCase();
+            if (
+                lowerBody === "hi" ||
+                lowerBody === "hello" ||
+                lowerBody === "hey" ||
+                lowerBody.startsWith("hello") ||
+                lowerBody.startsWith("hi ") ||
+                lowerBody.includes("help") ||
+                lowerBody.startsWith("@")
+            ) {
                 return api.sendMessage(
                     `🤖 Hello! I'm online.\nMy prefix is: ${prefix}\nTry ${prefix}help to see commands.`,
                     threadID,
