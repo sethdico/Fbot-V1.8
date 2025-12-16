@@ -1,49 +1,37 @@
+// cmds/lyrics.js
 const axios = require("axios");
-const fs = require("fs");
-const path = require("path");
 
 module.exports = {
     name: "lyrics",
     aliases: ["ly"],
     usePrefix: false,
+    usage: "lyrics <song title>",
+    description: "Get song lyrics by title.",
+    cooldown: 6,
     execute: async ({ api, event, args }) => {
-        const { threadID, messageID } = event;
-        const title = args.join(" ");
-        if (!title) return api.sendMessage("⚠️ Enter song name.", threadID);
+        const title = args.join(" ").trim();
+        if (!title) {
+            return api.sendMessage("🎵 Usage: lyrics 16 mirrors", event.threadID, event.messageID);
+        }
 
         try {
-            api.setMessageReaction("🎵", messageID, () => {}, true);
-
-            const res = await axios.get(`https://betadash-api-swordslush-production.up.railway.app/lyrics-finder?title=${encodeURIComponent(title)}`, {
-                headers: { "User-Agent": "Mozilla/5.0" }
+            api.setMessageReaction("🎵", event.messageID, () => {}, true);
+            const res = await axios.get("https://betadash-api-swordslush-production.up.railway.app/lyrics-finder", {
+                params: { title },
+                timeout: 20000
             });
-            
-            const { lyrics, artist, title: songTitle, image } = res.data;
-            if (!lyrics) throw new Error("No lyrics");
 
-            const msg = `🎵 **${songTitle || title}**\n👤 **${artist || "Unknown"}**\n━━━━━━━━━━━━━━━━\n${lyrics}`;
+            const lyrics = res.data?.lyrics?.trim();
+            if (!lyrics) throw new Error("Not found");
 
-            // Try to send with image
-            if (image) {
-                try {
-                    const imgPath = path.join(__dirname, "..", "cache", `ly_${Date.now()}.jpg`);
-                    const imgRes = await axios.get(image, { responseType: "stream" });
-                    const writer = fs.createWriteStream(imgPath);
-                    imgRes.data.pipe(writer);
+            // Truncate if too long (Messenger limit ~5k chars)
+            const safeLyrics = lyrics.length > 4000 ? lyrics.substring(0, 4000) + "\n\n[...truncated]" : lyrics;
 
-                    writer.on("finish", () => {
-                        api.sendMessage({ body: msg, attachment: fs.createReadStream(imgPath) }, threadID, () => fs.unlinkSync(imgPath));
-                    });
-                    return;
-                } catch (e) {} // If image fails, ignore and send text below
-            }
-
-            // Fallback: Send Text Only
-            api.sendMessage(msg, threadID);
-            api.setMessageReaction("✅", messageID, () => {}, true);
-
-        } catch (e) {
-            api.sendMessage("❌ Lyrics not found.", threadID, messageID);
+            api.sendMessage(`🎵 **Lyrics: ${title}**\n━━━━━━━━━━━━━━━━\n${safeLyrics}`, event.threadID, event.messageID);
+            api.setMessageReaction("✅", event.messageID, () => {}, true);
+        } catch (error) {
+            api.setMessageReaction("❌", event.messageID, () => {}, true);
+            return api.sendMessage("❌ Lyrics not found.", event.threadID, event.messageID);
         }
     }
 };
