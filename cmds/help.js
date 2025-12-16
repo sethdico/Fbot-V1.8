@@ -1,66 +1,72 @@
+// cmds/help.js
 module.exports = {
     name: "help",
     usePrefix: false,
     usage: "help [command] | help all",
-    version: "5.0", // Ultimate Version
-    description: "Shows commands and usage details.",
-    cooldown: 2,
-
-    execute: async ({ api, event, args }) => {
+    version: "5.0",
+    description: "Shows all commands or detailed info for a specific one.",
+    execute({ api, event, args }) {
         const { threadID, messageID } = event;
-        const commands = global.commands;
-        const prefix = "/"; // Visual prefix only
+        const botPrefix = global.config?.prefix || "/";
+        const commands = [...new Set(global.commands.values())];
 
-        // ===============================================
-        // 1. HELP ALL (List every command + description)
-        // ===============================================
-        if (args[0] === "all") {
-            let msg = `╔════════════╗\n   📜 FULL LIST\n╚════════════╝\n\n`;
-            
-            // Convert Map to Array, Sort Alphabetically
-            const sortedCmds = Array.from(commands.values()).sort((a, b) => a.name.localeCompare(b.name));
+        // --- 1. Handle: /help <specific command> ---
+        if (args.length > 0 && args[0].toLowerCase() !== "all") {
+            const cmdName = args[0].toLowerCase();
+            const cmd = global.commands.get(cmdName);
+            if (!cmd) {
+                return api.sendMessage(`❌ Command "${cmdName}" not found.`, threadID, messageID);
+            }
+            const aliases = cmd.aliases ? cmd.aliases.join(", ") : "None";
+            const usage = cmd.usage || `${botPrefix}${cmd.name}`;
+            const admin = cmd.admin ? "✅ Yes" : "❌ No";
+            const cooldown = cmd.cooldown ? `${cmd.cooldown}s` : "None";
 
-            sortedCmds.forEach(cmd => {
-                // Formatting: • /command - Description
-                msg += `• /${cmd.name}\n  └ ${cmd.description || "No description."}\n`;
+            return api.sendMessage(
+                `╔══════════════════╗
+         📖 COMMAND GUIDE
+╚══════════════════╝
+🔹 **Name:** ${cmd.name}
+📝 **Description:** ${cmd.description || "No description."}
+⌨️ **Usage:** ${usage}
+🖇️ **Aliases:** ${aliases}
+⏱️ **Cooldown:** ${cooldown}
+👑 **Admin Only:** ${admin}
+`,
+                threadID,
+                messageID
+            );
+        }
+
+        // --- 2. Handle: /help all ---
+        if (args[0]?.toLowerCase() === "all") {
+            const allCmds = commands
+                .filter(cmd => cmd.name)
+                .sort((a, b) => a.name.localeCompare(b.name));
+
+            if (allCmds.length === 0) {
+                return api.sendMessage("❌ No commands available.", threadID, messageID);
+            }
+
+            let msg = `╔══════════════════╗
+     🤖 ALL COMMANDS (A-Z)
+╚══════════════════╝\n\n`;
+
+            allCmds.forEach(cmd => {
+                const desc = cmd.description || "No description";
+                const adminTag = cmd.admin ? " 👑" : "";
+                msg += `🔹 ${botPrefix}${cmd.name}${adminTag}\n   → ${desc}\n\n`;
             });
 
-            msg += `\nTotal: ${commands.size} commands.`;
+            msg += `💡 Tip: Type \`${botPrefix}help <command>\` for details.`;
             return api.sendMessage(msg, threadID, messageID);
         }
 
-        // ===============================================
-        // 2. HELP <COMMAND> (Specific details)
-        // ===============================================
-        if (args[0] && args[0].toLowerCase() !== "all") {
-            const cmdName = args[0].toLowerCase();
-            const cmd = commands.get(cmdName) || Array.from(commands.values()).find(c => c.aliases && c.aliases.includes(cmdName));
-
-            if (!cmd) return api.sendMessage(`❌ Command "/${cmdName}" not found.`, threadID, messageID);
-
-            const info = `
-╔════════════╗
-   📖 GUIDE
-╚════════════╝
-🔹 **Name:** ${cmd.name}
-📝 **Desc:** ${cmd.description || "No description available."}
-⌨️ **Usage:** ${cmd.usage ? cmd.usage : `/${cmd.name}`}
-🖇️ **Aliases:** ${cmd.aliases && cmd.aliases.length > 0 ? cmd.aliases.join(", ") : "None"}
-⏱️ **Cooldown:** ${cmd.cooldown || 0}s
-👑 **Admin Only:** ${cmd.admin ? "Yes" : "No"}
-`;
-            return api.sendMessage(info, threadID, messageID);
-        }
-
-        // ===============================================
-        // 3. MAIN MENU (Categorized List)
-        // ===============================================
-        
-        // Define your categories manually here to keep it organized
+        // --- 3. Default: Categorized Menu ---
         const categories = {
             "🤖 AI & Chat": [
-                "ai", "chippai", "gemini", "gptnano",
-                "you", "webcopilot", "quillbot", "venice", "aria", "copilot"
+                "ai", "gemini", "gptnano",
+                "you", "webpilot", "quillbot", "venice", "aria", "copilot", "xdash"
             ],
             "🎧 Media & Fun": [
                 "spotify", "lyrics", "pinterest", "screenshot", 
@@ -68,7 +74,7 @@ module.exports = {
             ],
             "🛠️ Tools & Utility": [
                 "translate", "dict", "remind", "uptime",
-                "help", "prefix"
+                "help", "prefix", "myid"
             ],
             "⚙️ Admin & System": [
                 "kick", "add", "leave", "notify", 
@@ -76,33 +82,44 @@ module.exports = {
             ]
         };
 
-        let msg = `╔════════════╗\n   🤖 BOT MENU\n╚════════════╝\nType "help all" for descriptions.\n\n`;
+        let msg = `╔══════════════════╗
+     🤖 BOT MENU
+╚══════════════════╝\n`;
 
-        // Track which commands we have already shown
-        const listedCommands = new Set();
+        let listed = new Set();
 
-        // Loop through defined categories
-        for (const [categoryName, cmdList] of Object.entries(categories)) {
-            // Filter: Only show commands that actually exist in the bot
-            const activeCmds = cmdList.filter(name => commands.has(name));
-            
-            if (activeCmds.length > 0) {
-                msg += `➤ ${categoryName}\n`;
-                msg += `  ${activeCmds.join(", ")}\n\n`;
-                activeCmds.forEach(c => listedCommands.add(c));
+        for (const [category, cmdList] of Object.entries(categories)) {
+            const available = cmdList.filter(name => {
+                const cmd = global.commands.get(name);
+                return cmd && cmd.name && !listed.has(cmd.name);
+            });
+
+            if (available.length > 0) {
+                msg += `\n➤ **${category}**\n`;
+                available.forEach(name => {
+                    const cmd = global.commands.get(name);
+                    const adminTag = cmd?.admin ? " 👑" : "";
+                    msg += `  • ${botPrefix}${name}${adminTag}\n`;
+                    listed.add(cmd.name);
+                });
             }
         }
 
-        // Find "Others" (Commands that exist but aren't in the lists above)
-        const allCommandNames = Array.from(commands.keys());
-        const otherCmds = allCommandNames.filter(name => !listedCommands.has(name)).sort();
+        // Add any unlisted commands under "Others"
+        const others = commands
+            .filter(cmd => cmd.name && !listed.has(cmd.name))
+            .sort((a, b) => a.name.localeCompare(b.name));
 
-        if (otherCmds.length > 0) {
-            msg += `➤ 📂 General / Others\n`;
-            msg += `  ${otherCmds.join(", ")}\n\n`;
+        if (others.length > 0) {
+            msg += `\n➤ **📂 Others**\n`;
+            others.forEach(cmd => {
+                const adminTag = cmd.admin ? " 👑" : "";
+                msg += `  • ${botPrefix}${cmd.name}${adminTag}\n`;
+            });
         }
 
-        msg += `💡 Type **help <command>** for details.`;
+        msg += `\n💡 Type \`${botPrefix}help all\` to see all commands.\n`;
+        msg += `💡 Type \`${botPrefix}help <command>\` for details.`;
 
         return api.sendMessage(msg, threadID, messageID);
     }
