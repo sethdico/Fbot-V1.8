@@ -15,12 +15,11 @@ module.exports = {
 
         try {
             api.setMessageReaction("💬", event.messageID, () => {}, true);
-            
-            // Replaced 'userid' with 'uid' as requested to fix memory
+
             const res = await axios.get("https://betadash-api-swordslush-production.up.railway.app/Aria", {
                 params: {
                     ask: query,
-                    uid: event.senderID, 
+                    userid: event.senderID, 
                     stream: ""
                 },
                 timeout: 30000
