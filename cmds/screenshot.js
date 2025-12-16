@@ -4,48 +4,44 @@ const path = require("path");
 
 module.exports = {
     name: "screenshot",
-    aliases: ["ss", "webshot"],
+    aliases: ["ss"],
     usePrefix: false,
-    usage: "screenshot <url>",
-    description: "Take a screenshot of a website.",
-    cooldown: 5,
-
     execute: async ({ api, event, args }) => {
         const { threadID, messageID } = event;
         const url = args.join(" ");
+        if (!url) return api.sendMessage("⚠️ Provide a URL.", threadID);
 
-        if (!url) return api.sendMessage("⚠️ Please provide a URL.", threadID, messageID);
-
-        // Basic URL validation
-        const targetUrl = url.startsWith("http") ? url : `https://${url}`;
+        const target = url.startsWith("http") ? url : `https://${url}`;
 
         try {
             api.setMessageReaction("📸", messageID, () => {}, true);
 
-            const apiUrl = `https://betadash-api-swordslush-production.up.railway.app/screenshot?url=${encodeURIComponent(targetUrl)}`;
-            const imgPath = path.join(__dirname, "..", "cache", `ss_${Date.now()}.png`);
-            
-            // Ensure cache dir exists
-            if (!fs.existsSync(path.dirname(imgPath))) fs.mkdirSync(path.dirname(imgPath), { recursive: true });
+            const cachePath = path.join(__dirname, "..", "cache", `ss_${Date.now()}.png`);
+            if (!fs.existsSync(path.dirname(cachePath))) fs.mkdirSync(path.dirname(cachePath), { recursive: true });
 
-            const res = await axios.get(apiUrl, { responseType: "stream" });
-            const writer = fs.createWriteStream(imgPath);
-            res.data.pipe(writer);
+            const response = await axios({
+                url: "https://betadash-api-swordslush-production.up.railway.app/screenshot",
+                method: "GET",
+                params: { url: target },
+                responseType: "stream",
+                headers: { "User-Agent": "Mozilla/5.0" }
+            });
+
+            const writer = fs.createWriteStream(cachePath);
+            response.data.pipe(writer);
 
             writer.on("finish", () => {
                 api.sendMessage({
-                    body: `📸 Screenshot of: ${targetUrl}`,
-                    attachment: fs.createReadStream(imgPath)
-                }, threadID, () => fs.unlinkSync(imgPath), messageID);
+                    body: `📸 Screenshot: ${target}`,
+                    attachment: fs.createReadStream(cachePath)
+                }, threadID, () => fs.unlinkSync(cachePath));
                 api.setMessageReaction("✅", messageID, () => {}, true);
             });
 
-            writer.on("error", () => {
-                 api.sendMessage("❌ Failed to save screenshot.", threadID, messageID);
-            });
+            writer.on("error", () => api.sendMessage("❌ File Write Error.", threadID));
 
         } catch (e) {
-            api.sendMessage("❌ Failed to take screenshot. URL might be invalid.", threadID, messageID);
+            api.sendMessage("❌ Failed to screenshot (Site might be blocking bots).", threadID, messageID);
         }
     }
 };
