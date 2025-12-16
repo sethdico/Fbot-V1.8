@@ -5,7 +5,7 @@ module.exports = {
     aliases: ["ar"],
     usePrefix: false,
     usage: "aria <question>",
-    description: "Your personal AI with memory (uses your ID).",
+    description: "Aria AI which uses real time information.",
     cooldown: 8,
     execute: async ({ api, event, args }) => {
         const query = args.join(" ").trim();
