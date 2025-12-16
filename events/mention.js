@@ -1,8 +1,7 @@
 // events/mention.js
 module.exports = {
-    name: "message", // ⚠️ CRITICAL: Must be "message" to trigger on all texts
+    name: "message", // ⚠️ Critical: must be "message" to trigger on all texts
     execute: async ({ api, event, config }) => {
-        // Only process text messages
         if (!event.body || typeof event.body !== "string") return;
 
         const botID = api.getCurrentUserID();
@@ -20,7 +19,7 @@ module.exports = {
                 );
             }
         }
-        // ➤ In PRIVATE CHATS: treat any message that looks like a greeting as a mention
+        // ➤ In PRIVATE CHATS: respond to common greetings or "help"
         else {
             const lowerBody = event.body.trim().toLowerCase();
             if (
