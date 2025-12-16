@@ -5,42 +5,38 @@ module.exports = {
     aliases: ["ar"],
     usePrefix: false,
     usage: "aria <question>",
-    description: "Aria AI conversational with real-time information.",
-    cooldown: 5,
-
+    description: "Your personal AI with memory (uses your ID).",
+    cooldown: 8,
     execute: async ({ api, event, args }) => {
-        const { threadID, messageID, senderID } = event;
         const query = args.join(" ").trim();
-
         if (!query) {
-            return api.sendMessage("🤖 Usage: aria What is the capital of France?", threadID, messageID);
+            return api.sendMessage("🤖 Usage: aria What is love?", event.threadID, event.messageID);
         }
 
         try {
-            api.setMessageReaction("💬", messageID, () => {}, true);
-
-            // sending both 'userid' and 'uid' to ensure the API catches the ID for memory
+            api.setMessageReaction("💬", event.messageID, () => {}, true);
+            
+            // Replaced 'userid' with 'uid' as requested to fix memory
             const res = await axios.get("https://betadash-api-swordslush-production.up.railway.app/Aria", {
                 params: {
                     ask: query,
-                    userid: String(senderID), // Ensuring it is sent as a string
-                    uid: String(senderID)     // Some APIs look for 'uid' instead of 'userid'
-                }
+                    uid: event.senderID, 
+                    stream: ""
+                },
+                timeout: 30000
             });
 
-            const answer = res.data.response || res.data.message || res.data.result || res.data.answer;
-
+            const answer = res.data?.response || res.data?.message || res.data?.result || res.data?.answer;
             if (!answer) throw new Error("Empty response");
 
-            api.sendMessage(`🤖 **Aria AI**\n━━━━━━━━━━━━━━━━\n${answer}\n━━━━━━━━━━━━━━━━`, threadID, messageID);
-            api.setMessageReaction("✅", messageID, () => {}, true);
-
+            api.sendMessage(`🤖 **Aria AI**\n━━━━━━━━━━━━━━━━\n${answer}\n━━━━━━━━━━━━━━━━`, event.threadID, event.messageID);
+            api.setMessageReaction("✅", event.messageID, () => {}, true);
         } catch (error) {
-            api.setMessageReaction("❌", messageID, () => {}, true);
+            api.setMessageReaction("❌", event.messageID, () => {}, true);
             if (error.code === "ECONNABORTED") {
-                return api.sendMessage("⏳ Aria took too long to answer. Please try again.", threadID, messageID);
+                return api.sendMessage("⏳ Aria is waking up. Try again in 30s.", event.threadID, event.messageID);
             }
-            return api.sendMessage("❌ Aria is currently offline.", threadID, messageID);
+            return api.sendMessage("❌ Aria is offline.", event.threadID, event.messageID);
         }
     }
 };
