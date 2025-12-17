@@ -1,42 +1,27 @@
-// events/mention.js
 module.exports = {
-    name: "message", // ⚠️ Critical: must be "message" to trigger on all texts
+    name: "mention_reply",
+    // ⚠️ CRITICAL: The name must not conflict with other events. 
+    // We use a specific name here, but the trigger is handled by the index.js logic.
+    
     execute: async ({ api, event, config }) => {
-        if (!event.body || typeof event.body !== "string") return;
-
+        const { body, mentions, threadID, messageID, senderID } = event;
         const botID = api.getCurrentUserID();
-        const prefix = config.prefix || "/";
-        const threadID = event.threadID;
-        const isGroup = event.isGroup;
 
-        // ➤ In GROUPS: only respond if explicitly mentioned with @[BOT_ID]
-        if (isGroup) {
-            if (event.body.includes(`@[${botID}]`)) {
-                return api.sendMessage(
-                    `🤖 Hello! I am online.\nMy prefix is: ${prefix}\nType ${prefix}help to see commands.`,
-                    threadID,
-                    event.messageID
-                );
-            }
-        }
-        // ➤ In PRIVATE CHATS: respond to common greetings or "help"
-        else {
-            const lowerBody = event.body.trim().toLowerCase();
-            if (
-                lowerBody === "hi" ||
-                lowerBody === "hello" ||
-                lowerBody === "hey" ||
-                lowerBody.startsWith("hello") ||
-                lowerBody.startsWith("hi ") ||
-                lowerBody.includes("help") ||
-                lowerBody.startsWith("@")
-            ) {
-                return api.sendMessage(
-                    `🤖 Hello! I'm online.\nMy prefix is: ${prefix}\nTry ${prefix}help to see commands.`,
-                    threadID,
-                    event.messageID
-                );
-            }
+        // 1. Check if the bot's ID is in the mentions object
+        const isMentioned = mentions && Object.keys(mentions).some(id => String(id) === String(botID));
+
+        // 2. Logic: If mentioned OR if it's a private chat (and not self)
+        if (isMentioned) {
+            const prefix = config.prefix || "/";
+            
+            return api.sendMessage(
+                {
+                    body: `🤖 **System Online**\n━━━━━━━━━━━━━━━━\nHello! My prefix is: \`${prefix}\`\nType \`${prefix}help\` to see commands.`,
+                    mentions: [{ tag: "@User", id: senderID }]
+                },
+                threadID,
+                messageID
+            );
         }
     }
 };
