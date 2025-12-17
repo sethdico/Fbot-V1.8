@@ -6,7 +6,6 @@
     <title>SYSTEM_FBOT_V1.8</title>
     <!-- Import Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    
     <style>
         :root {
             --bg-color: #050505;
@@ -16,13 +15,11 @@
             --accent: #ff0000; /* Glitch Red */
             --border: 2px solid white;
         }
-
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-
         body {
             background-color: var(--bg-color);
             color: var(--text-color);
@@ -32,7 +29,6 @@
             flex-direction: column;
             overflow-x: hidden;
             padding: 20px;
-            /* Scanlines */
             background: repeating-linear-gradient(
                 0deg,
                 rgba(0, 0, 0, 0.15),
@@ -41,18 +37,14 @@
                 transparent 2px
             );
         }
-
-        /* --- LAYOUT --- */
         .main-container {
             display: grid;
-            grid-template-columns: 300px 1fr; /* Sidebar + Main */
+            grid-template-columns: 300px 1fr;
             max-width: 1000px;
             margin: 5vh auto;
             gap: 20px;
             width: 100%;
         }
-
-        /* --- LEFT SIDE: PROFILE --- */
         .profile-section {
             border: var(--border);
             padding: 20px;
@@ -63,7 +55,6 @@
             background: var(--terminal-bg);
             box-shadow: 10px 10px 0px rgba(255, 255, 255, 0.1);
         }
-
         .profile-img {
             width: 150px;
             height: 150px;
@@ -72,7 +63,6 @@
             filter: grayscale(100%) contrast(1.2);
             margin-bottom: 20px;
         }
-
         h1 {
             font-size: 2.5rem;
             line-height: 1;
@@ -80,7 +70,6 @@
             text-transform: uppercase;
             letter-spacing: -2px;
         }
-
         .bio {
             font-size: 12px;
             background: white;
@@ -90,8 +79,6 @@
             transform: skew(-10deg);
             margin-bottom: 20px;
         }
-
-        /* --- RIGHT SIDE: TERMINAL --- */
         .terminal-window {
             border: var(--border);
             background: #0a0a0a;
@@ -101,7 +88,6 @@
             position: relative;
             box-shadow: -10px 10px 0px rgba(255, 255, 255, 0.1);
         }
-
         .terminal-header {
             background: white;
             color: black;
@@ -111,35 +97,29 @@
             display: flex;
             justify-content: space-between;
         }
-
         .terminal-output {
             flex: 1;
             padding: 20px;
             overflow-y: auto;
             font-size: 14px;
             line-height: 1.5;
-            color: #0f0; /* Classic Terminal Green Text */
+            color: #0f0;
             text-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
         }
-
-        /* Custom Scrollbar */
         .terminal-output::-webkit-scrollbar { width: 8px; }
         .terminal-output::-webkit-scrollbar-track { background: #000; }
         .terminal-output::-webkit-scrollbar-thumb { background: #fff; }
-
         .terminal-input-area {
             border-top: 1px solid white;
             padding: 10px;
             display: flex;
             background: black;
         }
-
         .prompt-char {
             color: #0f0;
             margin-right: 10px;
             font-weight: bold;
         }
-
         input {
             background: transparent;
             border: none;
@@ -149,17 +129,14 @@
             width: 100%;
             outline: none;
         }
-
-        /* --- WEIRD FLOATING BUTTONS --- */
         .controls {
-            grid-column: 1 / -1; /* Span full width */
+            grid-column: 1 / -1;
             display: flex;
             justify-content: flex-end;
             gap: 15px;
             flex-wrap: wrap;
             margin-top: 20px;
         }
-
         .btn {
             background: black;
             color: white;
@@ -177,8 +154,6 @@
             transition: 0.1s;
             position: relative;
         }
-
-        /* Weird offset hover effect */
         .btn:hover {
             top: -3px;
             left: -3px;
@@ -186,21 +161,15 @@
             background: white;
             color: black;
         }
-
         .btn:active {
             top: 0;
             left: 0;
             box-shadow: none;
         }
-
-        /* Specific Button Styles */
         .btn-cmd { border-color: #00ff00; color: #00ff00; }
         .btn-cmd:hover { background: #00ff00; box-shadow: 6px 6px 0px white; }
-
         .btn-gc { border-color: #0088ff; color: #0088ff; }
         .btn-gc:hover { background: #0088ff; box-shadow: 6px 6px 0px white; }
-
-        /* Creator Tag */
         .sys-tag {
             position: fixed;
             bottom: 20px;
@@ -210,8 +179,6 @@
             transform: rotate(90deg);
             transform-origin: left bottom;
         }
-
-        /* Mobile Responsive */
         @media (max-width: 768px) {
             .main-container {
                 grid-template-columns: 1fr;
@@ -223,23 +190,16 @@
                 justify-content: center;
             }
         }
-
         .typing::after {
             content: '█';
             animation: blink 1s infinite;
         }
-
         @keyframes blink { 50% { opacity: 0; } }
-
     </style>
 </head>
 <body onload="updateStatus()">
-
     <div class="sys-tag">SYS_ARCHITECT::SETHDICO</div>
-
     <div class="main-container">
-        
-        <!-- LEFT: Profile -->
         <div class="profile-section">
             <img 
                 src="https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Ftse2.mm.bing.net%2Fth%2Fid%2FOIP.TKVswaLe7ZwFb41xjdpSGgHaHI%3Fpid%3DApi%26ucfimg%3D1&f=1&ipt=d412c60fb29de9e7c7d4cd2398fd289c52cac000f8fd7347fb5fbfbfdaee4492&ipo=images" 
@@ -250,15 +210,12 @@
             <h1>FBOT<br>V1.8</h1>
             <div class="bio">ACADEMIC.SALVATION.UNIT // FEED_ME_HOMEWORK</div>
             <p style="font-size: 10px; margin-top: 20px; opacity: 0.7;">
-                <!-- DYNAMIC STATUS AREA -->
                 STATUS: <span id="statusText">LOADING...</span><br>
                 LATENCY: <span id="latencyText">--</span>ms<br>
                 REGION: ASIA/MNL
             </p>
             <button class="btn" style="margin-top: 10px; padding: 5px 10px;" onclick="updateStatus()">REFRESH STATUS</button>
         </div>
-
-        <!-- RIGHT: Terminal -->
         <div class="terminal-window">
             <div class="terminal-header">
                 <span>CMD_PROMPT.EXE</span>
@@ -277,36 +234,29 @@
                 <input type="text" id="userInput" placeholder="Ask the AI or type /help..." autocomplete="off">
             </div>
         </div>
-
-        <!-- BOTTOM: Controls -->
         <div class="controls">
-            
             <button class="btn btn-cmd" onclick="showCommands()">
                 <i class="fas fa-list"></i> SYSTEM CMDS
             </button>
-
             <a href="https://m.me/j/AbZeDmZ0WFUPZ6Cr/" target="_blank" class="btn btn-gc">
                 <i class="fab fa-facebook-messenger"></i> ENTER GC
             </a>
-
             <a href="https://www.facebook.com/seth09asher" target="_blank" class="btn">
                 <i class="fab fa-facebook-f"></i> CREATOR
             </a>
-
         </div>
-
     </div>
-
     <script>
         const output = document.getElementById('output');
         const input = document.getElementById('userInput');
 
-        function print(text, isUser = false) {
+        function print(text, isUser = false, emoji = '💬') {
             const line = document.createElement('div');
-            const prefix = isUser ? `> <span style="color: white;">` : `[BOT]: `;
-            const suffix = isUser ? `</span>` : ``;
-            // Replaces newlines for cleaner display in the terminal
-            line.innerHTML = prefix + text.replace(/\n/g, '<br>') + suffix;
+            if (isUser) {
+                line.innerHTML = `> <span style="color: white;">${text.replace(/\n/g, '<br>')}</span>`;
+            } else {
+                line.innerHTML = `<span style="margin-right: 8px;">${emoji}</span>[BOT]: ${text.replace(/\n/g, '<br>')}`;
+            }
             line.style.marginBottom = "5px";
             output.appendChild(line);
             output.scrollTop = output.scrollHeight;
@@ -329,29 +279,22 @@
             output.scrollTop = output.scrollHeight;
         }
 
-        // --- STATUS/LATENCY FUNCTION ---
         async function updateStatus() {
             const start = performance.now();
             const statusText = document.getElementById('statusText');
             const latencyText = document.getElementById('latencyText');
-
             statusText.textContent = "CHECKING...";
             latencyText.textContent = "--";
-
             try {
                 const response = await fetch('/api/status');
                 const end = performance.now();
                 const data = await response.json();
-                
                 const latency = Math.round(end - start);
-
                 const statusMessage = data.isLoggedIn ? "ONLINE (Logged In)" : "ONLINE (Web Only)";
                 const statusColor = data.isLoggedIn ? 'lime' : 'yellow';
-
                 statusText.textContent = statusMessage;
                 statusText.style.color = statusColor;
                 latencyText.textContent = `${latency}ms`;
-
             } catch (error) {
                 statusText.textContent = "OFFLINE (Server Down)";
                 statusText.style.color = 'red';
@@ -359,81 +302,65 @@
             }
         }
 
-        // --- INPUT HANDLING ---
         input.addEventListener('keypress', async function (e) {
             if (e.key === 'Enter') {
                 const rawText = input.value;
                 if (!rawText) return;
-
-                print(rawText, true); 
+                print(rawText, true);
                 input.value = '';
-
                 const loadingLine = document.createElement('div');
                 loadingLine.innerHTML = `<span class="typing">PROCESSING...</span>`;
                 output.appendChild(loadingLine);
                 output.scrollTop = output.scrollHeight;
-                
-                // 1. Parse Command and Query
+
                 const parts = rawText.trim().split(/ +/);
-                let cmdName = parts[0].toLowerCase().startsWith('/') ? parts[0].substring(1) : 'ai'; // Default to 'ai'
+                let cmdName = parts[0].toLowerCase().startsWith('/') ? parts[0].substring(1) : 'ai';
                 let query = parts.slice(1).join(" ");
-                
                 if (!rawText.startsWith('/')) {
                     cmdName = 'ai';
                     query = rawText;
                 }
 
                 const allowedCmds = ['ai', 'webpilot', 'gemini', 'help'];
-                
                 if (cmdName === 'help') {
                     output.removeChild(loadingLine);
                     showCommands();
                     return;
                 }
-                
                 if (!allowedCmds.includes(cmdName)) {
                     output.removeChild(loadingLine);
-                    print(`[SYSTEM]: Web interface only supports: /ai, /webpilot, /gemini, /help.`);
+                    print(`[SYSTEM]: Web interface only supports: /ai, /webpilot, /gemini, /help.`, false, '⚠️');
+                    return;
+                }
+                if (query.trim() === '') {
+                    output.removeChild(loadingLine);
+                    print(`[SYSTEM]: Usage: /${cmdName} <query>`, false, '⚠️');
                     return;
                 }
 
-                if (query.trim() === '') {
-                     output.removeChild(loadingLine);
-                     print(`[SYSTEM]: Usage: /${cmdName} <query>`);
-                     return;
-                }
-
                 try {
-                    // 2. Send Command to Node.js Server API
                     const response = await fetch('/api/ai', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ command: cmdName, query: query })
                     });
-                    
                     if (!response.ok) throw new Error(`Server returned status ${response.status}`);
-
                     const data = await response.json();
-
-                    output.removeChild(loadingLine); 
-
+                    output.removeChild(loadingLine);
                     if (data.reply) {
-                        print(data.reply);
+                        print(data.reply, false, data.reaction || '💬');
                     } else {
-                        print(data.error || "SERVER ERROR: AI response failed.");
+                        print(data.error || "SERVER ERROR: AI response failed.", false, data.reaction || '❌');
                     }
-
                 } catch (error) {
                     output.removeChild(loadingLine);
                     console.error("Web Command Error:", error);
-                    print("CONNECTION FAILURE. (Server/API Error)");
+                    print("CONNECTION FAILURE. (Server/API Error)", false, '💥');
                 }
             }
         });
-        
-        // Initial status check on load
+
         updateStatus();
     </script>
-
 </body>
 </html>
