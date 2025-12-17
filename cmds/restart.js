@@ -1,22 +1,23 @@
-const config = require("../config.json");
-
 module.exports = {
     name: "restart",
+    aliases: ["reboot", "reload"],
     usePrefix: false,
-    admin: true, // Only admins can reach this point now
-    description: "Restarts the bot instance.",
-    
-    execute: async ({ api, event }) => {
-        // --- 🟢 FIX: FORCE STRING COMPARISON ---
-        // Even if config.json has numbers, we convert both to Strings here
-        if (String(event.senderID) !== String(config.ownerID)) {
-            return api.sendMessage("🔒 Only the Bot Owner can fully stop and restart the process.", event.threadID);
-        }
-
-        await api.sendMessage("🔄 System restarting...", event.threadID);
+    admin: true,
+    cooldown: 5,
+    version: "2.0",
+    usage: "restart",
+    description: "Restarts the bot instance. Owner only.",
+    execute: async ({ api, event, config }) => {
+        // Use global config, not direct require
+        const ownerID = String(config.ownerID);
+        const senderID = String(event.senderID);
         
-        // This kills the process. If you are using Replit, Render, or PM2, 
-        // it will automatically start back up again immediately.
+        if (senderID !== ownerID) {
+            return api.sendMessage("🔒 Only the Bot Owner can restart the system.", event.threadID);
+        }
+        
+        await api.sendMessage("🔄 System restarting...", event.threadID);
+        console.log(`✅ Bot restarted by owner ${senderID}`);
         process.exit(1);
     }
 };
