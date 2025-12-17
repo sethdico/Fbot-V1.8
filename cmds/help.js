@@ -3,12 +3,14 @@ module.exports = {
     name: "help",
     usePrefix: false,
     usage: "help [command] | help all",
-    version: "5.0",
-    description: "Shows all commands or detailed info for a specific one.",
+    version: "6.0",
+    description: "Smart command menu with auto-categorized AI, fun, admin, and more.",
     execute({ api, event, args }) {
         const { threadID, messageID } = event;
         const botPrefix = (global.config && typeof global.config.prefix === 'string') ? global.config.prefix : "/";
-        const commands = [...new Set(global.commands.values())];
+
+        // Get unique list of commands (avoid alias duplicates)
+        const allCommands = [...new Map(global.commands.entries()).values()].filter(cmd => cmd.name);
 
         // --- 1. Handle: /help <specific command> ---
         if (args.length > 0 && args[0].toLowerCase() !== "all") {
@@ -17,11 +19,10 @@ module.exports = {
             if (!cmd) {
                 return api.sendMessage(`❌ Command "${cmdName}" not found.`, threadID, messageID);
             }
-            const aliases = cmd.aliases ? cmd.aliases.join(", ") : "None";
+            const aliases = cmd.aliases?.length ? cmd.aliases.join(", ") : "None";
             const usage = cmd.usage || `${botPrefix}${cmd.name}`;
             const admin = cmd.admin ? "✅ Yes" : "❌ No";
             const cooldown = cmd.cooldown ? `${cmd.cooldown}s` : "None";
-
             return api.sendMessage(
                 `╔══════════════════╗
          📖 COMMAND GUIDE
@@ -40,86 +41,78 @@ module.exports = {
 
         // --- 2. Handle: /help all ---
         if (args[0]?.toLowerCase() === "all") {
-            const allCmds = commands
-                .filter(cmd => cmd.name)
-                .sort((a, b) => a.name.localeCompare(b.name));
-
-            if (allCmds.length === 0) {
-                return api.sendMessage("❌ No commands available.", threadID, messageID);
-            }
-
+            const sorted = allCommands.sort((a, b) => a.name.localeCompare(b.name));
             let msg = `╔══════════════════╗
      🤖 ALL COMMANDS (A-Z)
-╚══════════════════╝\n\n`;
-
-            allCmds.forEach(cmd => {
-                const desc = cmd.description || "No description";
+╚══════════════════╝\n`;
+            sorted.forEach(cmd => {
                 const adminTag = cmd.admin ? " 👑" : "";
-                msg += `🔹 ${botPrefix}${cmd.name}${adminTag}\n   → ${desc}\n\n`;
+                const desc = cmd.description || "No description";
+                msg += `🔹 ${botPrefix}${cmd.name}${adminTag}\n   → ${desc}\n`;
             });
-
-            msg += `💡 Tip: Type \`${botPrefix}help <command>\` for details.`;
+            msg += `\n💡 Tip: Type \`${botPrefix}help <command>\` for details.`;
             return api.sendMessage(msg, threadID, messageID);
         }
 
-        // --- 3. Default: Categorized Menu ---
+        // --- 3. Auto-Categorize Commands Dynamically ---
         const categories = {
-            "🤖 AI & Chat": [
-                "ai", "gemini", "gptnano",
-                "you", "webpilot", "quillbot", "venice", "aria", "copilot", "xdash"
-            ],
-            "🎧 Media & Fun": [
-                "spotify", "lyrics", "pinterest", "screenshot", 
-                "deepimg", "post", "8ball", "bible", "48laws"
-            ],
-            "🛠️ Tools & Utility": [
-                "translate", "dict", "remind", "uptime",
-                "help", "prefix", "myid"
-            ],
-            "⚙️ Admin & System": [
-                "kick", "add", "leave", "notify", 
-                "unsend", "changeavatar", "restart", "cmd", "welcome"
-            ]
+            "🤖 AI & Smart Tools": [],
+            "🎮 Entertainment & Fun": [],
+            "🛠️ Utilities & Info": [],
+            "👑 Admin & System": [],
+            "📦 Others": []
         };
 
+        // Keywords for auto-detection
+        const aiKeywords = ["ai", "gemini", "gpt", "copilot", "you", "webpilot", "quill", "venice", "aria", "xdash", "nano", "bard", "vision"];
+        const funKeywords = ["8ball", "bible", "48laws", "deepimg", "lyrics", "pinterest", "spotify", "post"];
+        const utilKeywords = ["dict", "trans", "remind", "uptime", "myid", "prefix", "debug", "define", "meaning"];
+
+        allCommands.forEach(cmd => {
+            const name = cmd.name.toLowerCase();
+            let placed = false;
+
+            // Skip if already categorized
+            if (cmd.admin) {
+                categories["👑 Admin & System"].push(cmd);
+                placed = true;
+            }
+            else if (aiKeywords.some(kw => name.includes(kw))) {
+                categories["🤖 AI & Smart Tools"].push(cmd);
+                placed = true;
+            }
+            else if (funKeywords.some(kw => name.includes(kw))) {
+                categories["🎮 Entertainment & Fun"].push(cmd);
+                placed = true;
+            }
+            else if (utilKeywords.some(kw => name.includes(kw))) {
+                categories["🛠️ Utilities & Info"].push(cmd);
+                placed = true;
+            }
+
+            if (!placed) {
+                categories["📦 Others"].push(cmd);
+            }
+        });
+
+        // --- 4. Build Final Message ---
         let msg = `╔══════════════════╗
-     🤖 BOT MENU
+     🤖 SMART HELP MENU
 ╚══════════════════╝\n`;
 
-        let listed = new Set();
-
-        for (const [category, cmdList] of Object.entries(categories)) {
-            const available = cmdList.filter(name => {
-                const cmd = global.commands.get(name);
-                return cmd && cmd.name && !listed.has(cmd.name);
-            });
-
-            if (available.length > 0) {
+        for (const [category, cmds] of Object.entries(categories)) {
+            if (cmds.length > 0) {
                 msg += `\n➤ **${category}**\n`;
-                available.forEach(name => {
-                    const cmd = global.commands.get(name);
-                    const adminTag = cmd?.admin ? " 👑" : "";
-                    msg += `  • ${botPrefix}${name}${adminTag}\n`;
-                    listed.add(cmd.name);
+                cmds.sort((a, b) => a.name.localeCompare(b.name)).forEach(cmd => {
+                    const adminTag = cmd.admin ? " 👑" : "";
+                    const cooldownTag = cmd.cooldown ? ` ⏱️${cmd.cooldown}s` : "";
+                    msg += `  • ${botPrefix}${cmd.name}${adminTag}${cooldownTag}\n`;
                 });
             }
         }
 
-        // Add any unlisted commands under "Others"
-        const others = commands
-            .filter(cmd => cmd.name && !listed.has(cmd.name))
-            .sort((a, b) => a.name.localeCompare(b.name));
-
-        if (others.length > 0) {
-            msg += `\n➤ **📂 Others**\n`;
-            others.forEach(cmd => {
-                const adminTag = cmd.admin ? " 👑" : "";
-                msg += `  • ${botPrefix}${cmd.name}${adminTag}\n`;
-            });
-        }
-
-        msg += `\n💡 Type \`${botPrefix}help all\` to see all commands.\n`;
-        msg += `💡 Type \`${botPrefix}help <command>\` for details.`;
+        msg += `\n💡 Type \`${botPrefix}help all\` to see all commands.`;
+        msg += `\n💡 Type \`${botPrefix}help <command>\` for usage details.`;
 
         return api.sendMessage(msg, threadID, messageID);
     }
