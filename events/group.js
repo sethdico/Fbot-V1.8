@@ -50,25 +50,10 @@ module.exports = {
             // ============================
             // 🔴 USER LEFT (Goodbye)
             // ============================
-            else if (logMessageType === "log:unsubscribe") {
-                const leftUserID = logMessageData.leftParticipantFbId;
-                
-                // Don't say goodbye to self
-                if (String(leftUserID) === String(api.getCurrentUserID())) return;
-
-                // Attempt to get name (might fail if user blocked/deleted)
-                let name = "Facebook User";
-                try {
-                    const userInfo = await api.getUserInfo(leftUserID);
-                    name = userInfo[leftUserID]?.name || "Member";
-                } catch (e) {}
-
-                const msg = `🚪 **Goodbye, ${name}.**\nWe will miss you!`;
-                await api.sendMessage(msg, threadID);
-            }
-
-        } catch (err) {
-            console.error("❌ Group Event Error:", err);
-        }
-    }
-};
+else if (logMessageType === "log:unsubscribe") {
+    const leftUserID = logMessageData.leftParticipantFbId;
+    if (String(leftUserID) === String(api.getCurrentUserID())) return;
+    // Just use the ID as name (no API call)
+    const msg = `🚪 **Goodbye, user ${leftUserID}.**\nWe will miss you!`;
+    await api.sendMessage(msg, threadID);
+}
