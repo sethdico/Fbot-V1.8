@@ -233,7 +233,7 @@
 
     </style>
 </head>
-<body>
+<body onload="updateStatus()">
 
     <div class="sys-tag">SYS_ARCHITECT::SETHDICO</div>
 
@@ -250,10 +250,12 @@
             <h1>FBOT<br>V1.8</h1>
             <div class="bio">ACADEMIC.SALVATION.UNIT // FEED_ME_HOMEWORK</div>
             <p style="font-size: 10px; margin-top: 20px; opacity: 0.7;">
-                STATUS: ONLINE<br>
-                LATENCY: 23ms<br>
+                <!-- DYNAMIC STATUS AREA -->
+                STATUS: <span id="statusText">LOADING...</span><br>
+                LATENCY: <span id="latencyText">--</span>ms<br>
                 REGION: ASIA/MNL
             </p>
+            <button class="btn" style="margin-top: 10px; padding: 5px 10px;" onclick="updateStatus()">REFRESH STATUS</button>
         </div>
 
         <!-- RIGHT: Terminal -->
@@ -267,7 +269,7 @@
                 <div>> CONNECTED TO FBOT V1.8 CORE</div>
                 <div>> TYPE A MESSAGE BELOW TO TEST AI...</div>
                 <br>
-                <div style="color: white;">[SYSTEM]: Welcome, User. I can help with school, entertainment, and more.</div>
+                <div style="color: white;">[SYSTEM]: Welcome, User. This web interface supports /ai, /webpilot, /gemini, and /help.</div>
                 <br>
             </div>
             <div class="terminal-input-area">
@@ -299,100 +301,138 @@
         const output = document.getElementById('output');
         const input = document.getElementById('userInput');
 
-        // Function to print text to terminal
         function print(text, isUser = false) {
             const line = document.createElement('div');
-            // Safely escape the text for innerHTML
-            const safeText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-            line.innerHTML = isUser ? `> <span style="color: white;">${safeText}</span>` : `[BOT]: ${safeText}`;
+            const prefix = isUser ? `> <span style="color: white;">` : `[BOT]: `;
+            const suffix = isUser ? `</span>` : ``;
+            // Replaces newlines for cleaner display in the terminal
+            line.innerHTML = prefix + text.replace(/\n/g, '<br>') + suffix;
             line.style.marginBottom = "5px";
             output.appendChild(line);
             output.scrollTop = output.scrollHeight;
         }
 
-        // List of fake commands for display
         function showCommands() {
             const cmdList = `
             <br>
-            ============ COMMAND LIST ============<br>
-            [AI] ai, gemini, gptnano, you, webpilot<br>
-            [FUN] shoti, 8ball, deepimg, 48laws<br>
-            [UTIL] trans, dict, remind, wiki<br>
-            [SYS] kick, add, leave, uptime<br>
+            ============ WEB COMMANDS ============<br>
+            /ai <prompt> (Your Custom API)<br>
+            /webpilot <query> (Web Search)<br>
+            /gemini <prompt> (Google AI)<br>
+            /help (Show this menu)<br>
             ======================================<br>
             `;
             const line = document.createElement('div');
             line.innerHTML = cmdList;
-            line.style.color = "#00ffff"; // Cyan for lists
+            line.style.color = "#00ffff";
             output.appendChild(line);
             output.scrollTop = output.scrollHeight;
         }
 
-        // Handle Input
+        // --- STATUS/LATENCY FUNCTION ---
+        async function updateStatus() {
+            const start = performance.now();
+            const statusText = document.getElementById('statusText');
+            const latencyText = document.getElementById('latencyText');
+
+            statusText.textContent = "CHECKING...";
+            latencyText.textContent = "--";
+
+            try {
+                const response = await fetch('/api/status');
+                const end = performance.now();
+                const data = await response.json();
+                
+                const latency = Math.round(end - start);
+
+                const statusMessage = data.isLoggedIn ? "ONLINE (Logged In)" : "ONLINE (Web Only)";
+                const statusColor = data.isLoggedIn ? 'lime' : 'yellow';
+
+                statusText.textContent = statusMessage;
+                statusText.style.color = statusColor;
+                latencyText.textContent = `${latency}ms`;
+
+            } catch (error) {
+                statusText.textContent = "OFFLINE (Server Down)";
+                statusText.style.color = 'red';
+                latencyText.textContent = '∞';
+            }
+        }
+
+        // --- INPUT HANDLING ---
         input.addEventListener('keypress', async function (e) {
             if (e.key === 'Enter') {
-                const text = input.value;
-                if (!text) return;
+                const rawText = input.value;
+                if (!rawText) return;
 
-                print(text, true); // Print user message
+                print(rawText, true); 
                 input.value = '';
 
-                // Simulate loading
                 const loadingLine = document.createElement('div');
                 loadingLine.innerHTML = `<span class="typing">PROCESSING...</span>`;
                 output.appendChild(loadingLine);
                 output.scrollTop = output.scrollHeight;
+                
+                // 1. Parse Command and Query
+                const parts = rawText.trim().split(/ +/);
+                let cmdName = parts[0].toLowerCase().startsWith('/') ? parts[0].substring(1) : 'ai'; // Default to 'ai'
+                let query = parts.slice(1).join(" ");
+                
+                if (!rawText.startsWith('/')) {
+                    cmdName = 'ai';
+                    query = rawText;
+                }
+
+                const allowedCmds = ['ai', 'webpilot', 'gemini', 'help'];
+                
+                if (cmdName === 'help') {
+                    output.removeChild(loadingLine);
+                    showCommands();
+                    return;
+                }
+                
+                if (!allowedCmds.includes(cmdName)) {
+                    output.removeChild(loadingLine);
+                    print(`[SYSTEM]: Web interface only supports: /ai, /webpilot, /gemini, /help.`);
+                    return;
+                }
+
+                if (query.trim() === '') {
+                     output.removeChild(loadingLine);
+                     print(`[SYSTEM]: Usage: /${cmdName} <query>`);
+                     return;
+                }
 
                 try {
-                    // --- AI API LOGIC ---
-                    const systemPrompt = "You are a helpful AI that talks as if they are talking to a kid, simple english, always say that you are made by seth asher salinguhay only say this if asked.";
-                    const apiUrlBase = "https://api.kojaxd.dpdns.org/ai/customai";
-                    
-                    const params = new URLSearchParams({
-                        apikey: "Koja",
-                        prompt: text,
-                        system: systemPrompt
+                    // 2. Send Command to Node.js Server API
+                    const response = await fetch('/api/ai', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ command: cmdName, query: query })
                     });
                     
-                    const apiUrl = `${apiUrlBase}?${params.toString()}`;
-                    
-                    const response = await fetch(apiUrl);
-                    
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
+                    if (!response.ok) throw new Error(`Server returned status ${response.status}`);
 
                     const data = await response.json();
 
-                    output.removeChild(loadingLine); // Remove loading text
-                    
-                    // Check for message, result, or response property
-                    let reply = data.message || data.result || data.response;
-                    
-                    // Fallback for plain string response
-                    if (!reply && typeof data === 'string') {
-                        reply = data;
-                    }
+                    output.removeChild(loadingLine); 
 
-                    if (reply) {
-                        // Check for the known status message
-                        if (reply.includes("Amadeus Bot is Active")) {
-                            print("SYSTEM WARNING: The AI service responded with a status message only. The API might be down or misconfigured. Cannot get a proper response.");
-                        } else {
-                            print(reply);
-                        }
+                    if (data.reply) {
+                        print(data.reply);
                     } else {
-                        print("SYSTEM ERROR: UNABLE TO COMPUTE. (API returned an unexpected format or empty data.)");
-                        console.log("Raw API Data:", data);
+                        print(data.error || "SERVER ERROR: AI response failed.");
                     }
 
                 } catch (error) {
                     output.removeChild(loadingLine);
-                    console.error("Fetch/API error:", error);
-                    print("CONNECTION FAILURE. (API or Network Error. Check Console for details)");
+                    console.error("Web Command Error:", error);
+                    print("CONNECTION FAILURE. (Server/API Error)");
                 }
             }
         });
+        
+        // Initial status check on load
+        updateStatus();
     </script>
 
 </body>
