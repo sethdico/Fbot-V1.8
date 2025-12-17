@@ -515,4 +515,26 @@ startBot();
 
 // Auto-reload commands on change (development only)
 if (process.env.NODE_ENV !== 'production') {
-   
+    fs.watch(path.resolve(__dirname, 'cmds'), (eventType, filename) => {
+        if (filename && filename.endsWith('.js')) {
+            console.log(`♻️ Reloading command: ${filename}`);
+            loadFiles();
+        }
+    });
+    fs.watch(path.resolve(__dirname, 'events'), (eventType, filename) => {
+        if (filename && filename.endsWith('.js')) {
+            console.log(`♻️ Reloading event: ${filename}`);
+            loadFiles();
+        }
+    });
+}
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+    console.log("\n👋 Shutting down gracefully...");
+    if (global.isLoggedIn) {
+        process.exit(0);
+    } else {
+        process.exit(1);
+    }
+});
