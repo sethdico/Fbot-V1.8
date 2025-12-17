@@ -302,7 +302,9 @@
         // Function to print text to terminal
         function print(text, isUser = false) {
             const line = document.createElement('div');
-            line.innerHTML = isUser ? `> <span style="color: white;">${text}</span>` : `[BOT]: ${text}`;
+            // Safely escape the text for innerHTML
+            const safeText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            line.innerHTML = isUser ? `> <span style="color: white;">${safeText}</span>` : `[BOT]: ${safeText}`;
             line.style.marginBottom = "5px";
             output.appendChild(line);
             output.scrollTop = output.scrollHeight;
@@ -342,7 +344,7 @@
                 output.scrollTop = output.scrollHeight;
 
                 try {
-                    // --- NEW AI API LOGIC ---
+                    // --- AI API LOGIC ---
                     const systemPrompt = "You are a helpful AI that talks as if they are talking to a kid, simple english, always say that you are made by seth asher salinguhay only say this if asked.";
                     const apiUrlBase = "https://api.kojaxd.dpdns.org/ai/customai";
                     
@@ -355,23 +357,39 @@
                     const apiUrl = `${apiUrlBase}?${params.toString()}`;
                     
                     const response = await fetch(apiUrl);
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
                     const data = await response.json();
 
                     output.removeChild(loadingLine); // Remove loading text
                     
-                    // Check for message, result, or response
-                    const reply = data.message || data.result || data.response;
+                    // Check for message, result, or response property
+                    let reply = data.message || data.result || data.response;
+                    
+                    // Fallback for plain string response
+                    if (!reply && typeof data === 'string') {
+                        reply = data;
+                    }
 
                     if (reply) {
-                        print(reply);
+                        // Check for the known status message
+                        if (reply.includes("Amadeus Bot is Active")) {
+                            print("SYSTEM WARNING: The AI service responded with a status message only. The API might be down or misconfigured. Cannot get a proper response.");
+                        } else {
+                            print(reply);
+                        }
                     } else {
-                        print("SYSTEM ERROR: UNABLE TO COMPUTE or Empty response from API.");
+                        print("SYSTEM ERROR: UNABLE TO COMPUTE. (API returned an unexpected format or empty data.)");
+                        console.log("Raw API Data:", data);
                     }
 
                 } catch (error) {
                     output.removeChild(loadingLine);
-                    console.error("Fetch error:", error);
-                    print("CONNECTION FAILURE. CHECK NETWORK.");
+                    console.error("Fetch/API error:", error);
+                    print("CONNECTION FAILURE. (API or Network Error. Check Console for details)");
                 }
             }
         });
