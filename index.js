@@ -4,17 +4,14 @@ const express = require('express');
 const axios = require('axios');
 
 // --- GLOBAL STATE ---
-// New: Tracks if the bot successfully logged into Facebook
-global.isLoggedIn = false; 
+global.isLoggedIn = false;
 global.commands = new Map();
 global.events = new Map();
 const cooldowns = new Map();
-// --------------------
 
-// --- 🔧 LOAD LOGIN LIBRARY 🔧 ---
+// --- 🔧 LOAD LOGIN LIBRARY ---
 let loginModule;
 let login;
-
 try {
     loginModule = require('ws3-fca');
     if (typeof loginModule === 'function') login = loginModule;
@@ -30,34 +27,26 @@ const scheduleTasks = require('./custom');
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
-// --- ⚙️ LOAD CONFIGURATION ⚙️ ---
 const configPath = path.resolve(__dirname, 'config.json');
 const appStatePath = path.resolve(__dirname, 'appState.json');
-
 let config;
 if (fs.existsSync(configPath)) {
     try { config = JSON.parse(fs.readFileSync(configPath, 'utf8')); } 
     catch (e) { config = {}; console.error("❌ config.json is invalid."); }
 } else { config = {}; }
-
 const botPrefix = config.prefix || "/";
 
 // ===============================================
 // --- 🌐 WEB SERVER & API ENDPOINTS ---
 // ===============================================
-
-// Middleware to parse JSON body for API requests
 app.use(express.json());
+app.use(express.static(path.join(__dirname)));
 
-// Serve the entire root directory as static files (for index.html)
-app.use(express.static(path.join(__dirname))); 
-
-// Route for the root URL (/) to send the index.html file
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// --- API 1: STATUS CHECK (for dynamic status/latency) ---
+// --- API 1: STATUS ---
 app.get('/api/status', (req, res) => {
     res.json({
         status: "Running",
@@ -66,80 +55,78 @@ app.get('/api/status', (req, res) => {
     });
 });
 
-
-// --- API 2: AI COMMANDS (The Bridge to your cmds logic) ---
+// --- API 2: AI COMMANDS (Now uses real cmds + captures reactions) ---
 app.post('/api/ai', async (req, res) => {
     const { command, query } = req.body;
-    let reply = null;
-    let error = null;
-
-    try {
-        switch (command) {
-            case 'ai':
-                // Logic hard-coded from cmds/ai.js
-                const systemPrompt = "You are a helpful AI that talks as if they are talking to a kid, simple english, always say that you are made by seth asher salinguhay only say this if asked.";
-                const apiUrl = "https://api.kojaxd.dpdns.org/ai/customai";
-                
-                const response = await axios.get(apiUrl, {
-                    params: {
-                        apikey: "Koja",
-                        prompt: query,
-                        system: systemPrompt
-                    }
-                });
-                const data = response.data;
-                reply = data.message || data.result || data.response || data;
-                
-                if (!reply || reply.includes("Amadeus Bot is Active")) {
-                    error = "AI API status error or no meaningful response.";
-                    reply = null;
-                }
-                break;
-
-            case 'webpilot':
-                // Logic hard-coded from cmds/webpilot.js
-                const webpilotRes = await axios.get("https://betadash-api-swordslush-production.up.railway.app/webpilot", {
-                    params: { search: query },
-                    timeout: 35000
-                });
-                reply = webpilotRes.data?.response?.trim();
-                if (!reply) throw new Error("WebPilot returned empty response.");
-                reply = `🌐 **WebPilot**\n━━━━━━━━━━━━━━━━\n${reply}\n━━━━━━━━━━━━━━━━`;
-                break;
-            
-            case 'gemini':
-                // Logic hard-coded from cmds/gemini.js (simplified for text-only)
-                const geminiUrl = "https://norch-project.gleeze.com/api/gemini";
-                const geminiRes = await axios.get(geminiUrl, { params: { prompt: query } });
-                const geminiData = geminiRes.data;
-                reply = geminiData.message || geminiData.response || geminiData.result || geminiData.content;
-                if (!reply) throw new Error("Gemini returned empty response.");
-                reply = `✨ **Gemini Vision**\n━━━━━━━━━━━━━━━━\n${reply}\n━━━━━━━━━━━━━━━━`;
-                break;
-                
-            default:
-                error = `Command '${command}' not supported on this web interface.`;
-        }
-    } catch (e) {
-        console.error(`Web Command Error [${command}]:`, e);
-        error = `Error executing command: ${e.message || "Unknown error"}`;
+    const allowedWebCommands = ['ai', 'webpilot', 'gemini'];
+    if (!allowedWebCommands.includes(command)) {
+        return res.json({ error: `Command '${command}' not supported on web.`, reaction: '❌' });
     }
 
-    res.json({ reply, error });
+    const cmd = global.commands.get(command);
+    if (!cmd || typeof cmd.execute !== 'function') {
+        return res.json({ error: `Command '${command}' not found.`, reaction: '❓' });
+    }
+
+    let webReply = null;
+    let webReaction = '💬';
+
+    const mockApi = {
+        sendMessage: (content) => {
+            if (typeof content === 'string') webReply = content;
+            else if (content?.body) webReply = content.body;
+        },
+        setMessageReaction: (emoji) => {
+            webReaction = emoji; // ✨ Capture reaction for web UI
+        },
+        getCurrentUserID: () => 'web_user',
+        getThreadInfo: () => Promise.resolve({ isGroup: false, threadName: 'Web Chat' }),
+        getUserInfo: () => Promise.resolve({})
+    };
+
+    const mockEvent = {
+        threadID: 'web',
+        messageID: `web_${Date.now()}`,
+        senderID: 'web_user',
+        body: `${command} ${query}`,
+        isGroup: false,
+        mentions: {},
+        messageReply: null,
+        attachments: [],
+        logMessageType: null,
+        logMessageData: {}
+    };
+
+    try {
+        await cmd.execute({
+            api: mockApi,
+            event: mockEvent,
+            args: query.trim() ? query.split(' ') : [],
+            config: config || {}
+        });
+        res.json({
+            reply: webReply || null,
+            reaction: webReaction
+        });
+    } catch (e) {
+        console.error(`Web API Error [${command}]:`, e.message || e);
+        res.json({
+            error: 'Command execution failed.',
+            reaction: '❌'
+        });
+    }
 });
 
 app.listen(PORT, () => console.log(`🌐 Server running on Port ${PORT}`));
 
 // ===============================================
-// --- END WEB SERVER SECTION ---
+// --- END WEB SERVER ---
 // ===============================================
 
-
-// --- 📂 FILE LOADER (FB COMMANDS) 📂 ---
+// --- 📂 FILE LOADER ---
 function loadFiles() {
     const eventsDir = path.resolve(__dirname, 'events');
     const cmdsDir = path.resolve(__dirname, 'cmds');
-
     if (fs.existsSync(eventsDir)) {
         fs.readdirSync(eventsDir).forEach(file => {
             if (file.endsWith('.js')) {
@@ -150,7 +137,6 @@ function loadFiles() {
             }
         });
     }
-
     if (fs.existsSync(cmdsDir)) {
         fs.readdirSync(cmdsDir).forEach(file => {
             if (file.endsWith('.js')) {
@@ -166,29 +152,24 @@ function loadFiles() {
     }
     console.log(`📦 Loaded ${global.commands.size} commands & ${global.events.size} events.`);
 }
-
 loadFiles();
 
-// --- 🤖 BOT STARTUP 🤖 ---
+// --- 🤖 BOT STARTUP ---
 const startBot = async () => {
     if (!fs.existsSync(appStatePath)) {
         console.error("\n❌ STOP: appState.json is missing.");
         return;
     }
-
     let appState;
     try { appState = JSON.parse(fs.readFileSync(appStatePath, 'utf8')); } 
     catch (err) { console.error("❌ ERROR: appState.json is broken."); return; }
-
     login({ appState }, (err, api) => {
         if (err) {
             console.error('❌ Login Failed. Cookies might be expired.', err);
-            global.isLoggedIn = false; // Fails to log in
+            global.isLoggedIn = false;
             return;
         }
-
-        global.isLoggedIn = true; // Successfully logged in!
-
+        global.isLoggedIn = true;
         api.setOptions({
             forceLogin: true,
             listenEvents: true,
@@ -196,10 +177,7 @@ const startBot = async () => {
             selfListen: false,
             userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         });
-
         console.log(`✅ Logged in successfully! ID: ${api.getCurrentUserID()}`);
-        
-        // --- CUSTOM SCHEDULER (Requires 'custom.js') ---
         if (config.ownerID) {
             try { 
                 const scheduleTasks = require('./custom'); 
@@ -208,45 +186,33 @@ const startBot = async () => {
                 console.log("⚠️ Custom scheduler error."); 
             }
         }
-
-
         global.events.forEach((event, name) => {
             if (event.onStart) {
                 try { event.onStart(api); } catch (e) { console.error(`❌ Event Start Error: ${name}`, e); }
             }
         });
-
         api.listenMqtt(async (listenErr, event) => {
             if (listenErr) return console.error("Listener Error:", listenErr);
-
-            // --- 🔧 ID HELPER FIX ---
             if(event.body === "/myid") {
                 console.log(`🆔 User requested ID: ${event.senderID}`);
-                return api.sendMessage(`🆔 Your UID: ${event.senderID}\n\nCopy this number and paste it into config.json as your "ownerID".`, event.threadID);
+                return api.sendMessage(`🆔 Your UID: ${event.senderID}\nCopy this number and paste it into config.json as your "ownerID".`, event.threadID);
             }
-            // ------------------------
-
             if (global.events.has(event.type)) {
                 try { await global.events.get(event.type).execute({ api, event, config }); } catch (e) {}
             }
-
             if (event.body && event.body.startsWith(botPrefix)) {
                 const args = event.body.slice(botPrefix.length).trim().split(/ +/);
                 const cmdName = args.shift().toLowerCase();
                 const cmd = global.commands.get(cmdName);
-
                 if (cmd) {
                     if (cmd.admin) {
                         const senderID = String(event.senderID);
                         const ownerID = String(config.ownerID);
                         const adminList = (config.admin || []).map(id => String(id));
-
                         const isOwner = senderID === ownerID;
                         const isAdmin = adminList.includes(senderID);
-
                         if (!isOwner && !isAdmin) return api.sendMessage("🔒 Admin only.", event.threadID);
                     }
-
                     const now = Date.now();
                     const key = `${event.senderID}-${cmdName}`;
                     const cooldownAmount = (cmd.cooldown || 3) * 1000;
@@ -255,7 +221,6 @@ const startBot = async () => {
                         if (now < expiration) return;
                     }
                     cooldowns.set(key, now);
-
                     try {
                         await cmd.execute({ api, event, args, config });
                     } catch (e) {
@@ -267,5 +232,4 @@ const startBot = async () => {
         });
     });
 };
-
 startBot();
