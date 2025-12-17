@@ -27,14 +27,33 @@ const scheduleTasks = require('./custom');
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
+// --- ⚙️ LOAD CONFIGURATION (ENV VARS FIRST, THEN config.json) ---
+const config = {
+    ownerID: process.env.OWNER_ID || null,
+    prefix: process.env.BOT_PREFIX || "/",
+    admin: process.env.ADMIN_IDS ? process.env.ADMIN_IDS.split(',') : [],
+    autoRestart: (process.env.AUTO_RESTART || "true").toLowerCase() === "true",
+    aiApiKey: process.env.AI_API_KEY || "Koja",
+    xdashApiKey: process.env.XDASH_API_KEY || "3884224f549d964644816c61b1b65d84"
+};
+
+// Fallback: If no env vars, try config.json (for local dev)
 const configPath = path.resolve(__dirname, 'config.json');
-const appStatePath = path.resolve(__dirname, 'appState.json');
-let config;
-if (fs.existsSync(configPath)) {
-    try { config = JSON.parse(fs.readFileSync(configPath, 'utf8')); } 
-    catch (e) { config = {}; console.error("❌ config.json is invalid."); }
-} else { config = {}; }
-const botPrefix = config.prefix || "/";
+if (!process.env.OWNER_ID && fs.existsSync(configPath)) {
+    try {
+        const fileConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        config.ownerID = fileConfig.ownerID || config.ownerID;
+        config.prefix = fileConfig.prefix || config.prefix;
+        config.admin = fileConfig.admin || config.admin;
+        config.autoRestart = fileConfig.autoRestart !== undefined ? fileConfig.autoRestart : config.autoRestart;
+        config.aiApiKey = fileConfig.aiApiKey || config.aiApiKey;
+        config.xdashApiKey = fileConfig.xdashApiKey || config.xdashApiKey;
+    } catch (e) {
+        console.error("❌ config.json is invalid. Using env vars only.");
+    }
+}
+
+const botPrefix = config.prefix;
 
 // ===============================================
 // --- 🌐 WEB SERVER & API ENDPOINTS ---
@@ -55,7 +74,7 @@ app.get('/api/status', (req, res) => {
     });
 });
 
-// --- API 2: AI COMMANDS (Now uses real cmds + captures reactions) ---
+// --- API 2: AI COMMANDS (Delegates to cmd files + captures reactions) ---
 app.post('/api/ai', async (req, res) => {
     const { command, query } = req.body;
     const allowedWebCommands = ['ai', 'webpilot', 'gemini'];
@@ -76,9 +95,7 @@ app.post('/api/ai', async (req, res) => {
             if (typeof content === 'string') webReply = content;
             else if (content?.body) webReply = content.body;
         },
-        setMessageReaction: (emoji) => {
-            webReaction = emoji; // ✨ Capture reaction for web UI
-        },
+        setMessageReaction: (emoji) => { webReaction = emoji; },
         getCurrentUserID: () => 'web_user',
         getThreadInfo: () => Promise.resolve({ isGroup: false, threadName: 'Web Chat' }),
         getUserInfo: () => Promise.resolve({})
@@ -92,9 +109,7 @@ app.post('/api/ai', async (req, res) => {
         isGroup: false,
         mentions: {},
         messageReply: null,
-        attachments: [],
-        logMessageType: null,
-        logMessageData: {}
+        attachments: []
     };
 
     try {
@@ -102,28 +117,20 @@ app.post('/api/ai', async (req, res) => {
             api: mockApi,
             event: mockEvent,
             args: query.trim() ? query.split(' ') : [],
-            config: config || {}
+            config: config
         });
-        res.json({
-            reply: webReply || null,
-            reaction: webReaction
-        });
+        res.json({ reply: webReply || null, reaction: webReaction });
     } catch (e) {
         console.error(`Web API Error [${command}]:`, e.message || e);
-        res.json({
-            error: 'Command execution failed.',
-            reaction: '❌'
-        });
+        res.json({ error: 'Command execution failed.', reaction: '❌' });
     }
 });
 
 app.listen(PORT, () => console.log(`🌐 Server running on Port ${PORT}`));
 
 // ===============================================
-// --- END WEB SERVER ---
+// --- FILE LOADER ---
 // ===============================================
-
-// --- 📂 FILE LOADER ---
 function loadFiles() {
     const eventsDir = path.resolve(__dirname, 'events');
     const cmdsDir = path.resolve(__dirname, 'cmds');
@@ -154,7 +161,10 @@ function loadFiles() {
 }
 loadFiles();
 
+// ===============================================
 // --- 🤖 BOT STARTUP ---
+// ===============================================
+const appStatePath = path.resolve(__dirname, 'appState.json');
 const startBot = async () => {
     if (!fs.existsSync(appStatePath)) {
         console.error("\n❌ STOP: appState.json is missing.");
@@ -163,6 +173,7 @@ const startBot = async () => {
     let appState;
     try { appState = JSON.parse(fs.readFileSync(appStatePath, 'utf8')); } 
     catch (err) { console.error("❌ ERROR: appState.json is broken."); return; }
+
     login({ appState }, (err, api) => {
         if (err) {
             console.error('❌ Login Failed. Cookies might be expired.', err);
@@ -178,19 +189,18 @@ const startBot = async () => {
             userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         });
         console.log(`✅ Logged in successfully! ID: ${api.getCurrentUserID()}`);
+
         if (config.ownerID) {
-            try { 
-                const scheduleTasks = require('./custom'); 
-                scheduleTasks(config.ownerID, api, config); 
-            } catch (e) { 
-                console.log("⚠️ Custom scheduler error."); 
-            }
+            try { scheduleTasks(config.ownerID, api, config); }
+            catch (e) { console.log("⚠️ Custom scheduler error."); }
         }
+
         global.events.forEach((event, name) => {
             if (event.onStart) {
                 try { event.onStart(api); } catch (e) { console.error(`❌ Event Start Error: ${name}`, e); }
             }
         });
+
         api.listenMqtt(async (listenErr, event) => {
             if (listenErr) return console.error("Listener Error:", listenErr);
             if(event.body === "/myid") {
@@ -208,7 +218,7 @@ const startBot = async () => {
                     if (cmd.admin) {
                         const senderID = String(event.senderID);
                         const ownerID = String(config.ownerID);
-                        const adminList = (config.admin || []).map(id => String(id));
+                        const adminList = (Array.isArray(config.admin) ? config.admin : []).map(id => String(id));
                         const isOwner = senderID === ownerID;
                         const isAdmin = adminList.includes(senderID);
                         if (!isOwner && !isAdmin) return api.sendMessage("🔒 Admin only.", event.threadID);
