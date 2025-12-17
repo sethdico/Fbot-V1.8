@@ -61,7 +61,10 @@ module.exports = {
                 api.sendMessage({
                     body: `🎨 Result for: ${prompt}`,
                     attachment: fs.createReadStream(filePath)
-                }, threadID, () => fs.unlinkSync(filePath)); // Delete after sending
+                }, threadID, () => {
+    fs.unlink(filePath, (err) => {
+        if (err) console.warn("Cleanup warning (deepimg):", err.message);
+    }); // Delete after sending
             });
 
         } catch (error) {
