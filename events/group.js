@@ -5,31 +5,41 @@ module.exports = {
     name: "group_events",
 
     async execute({ api, event }) {
-        // 1. Check Settings
+        const { logMessageType, logMessageData, threadID } = event;
+
+        // 1. Load Settings (Safely)
         const settingsPath = path.resolve(__dirname, "..", "settings.json");
-        if (fs.existsSync(settingsPath)) {
-            const settings = JSON.parse(fs.readFileSync(settingsPath));
-            if (settings.welcome === false) return; // If OFF, do nothing
+        let settings = { welcome: true }; // Default to ON if file missing
+
+        try {
+            if (fs.existsSync(settingsPath)) {
+                settings = JSON.parse(fs.readFileSync(settingsPath));
+            }
+        } catch (e) {
+            console.error("⚠️ Could not read settings.json in group event.");
         }
 
-        const { threadID, logMessageType, logMessageData } = event;
+        // 2. Stop if welcome is disabled
+        if (settings.welcome === false) return;
 
         try {
             // ============================
             // 🟢 USER JOINED (Welcome)
             // ============================
             if (logMessageType === "log:subscribe") {
+                // Get Thread Info to find the Group Name
                 const threadInfo = await api.getThreadInfo(threadID);
-                const { threadName } = threadInfo;
-                const newUsers = logMessageData.addedParticipants;
+                const threadName = threadInfo.threadName || "the group";
+                const addedParticipants = logMessageData.addedParticipants;
 
-                for (const user of newUsers) {
-                    if (user.userFbId === api.getCurrentUserID()) continue; // Ignore bot
+                for (const user of addedParticipants) {
+                    // Don't welcome the bot itself
+                    if (String(user.userFbId) === String(api.getCurrentUserID())) continue;
 
                     const userName = user.fullName || "New Member";
                     
                     const msg = {
-                        body: `👋 Welcome to ${threadName || "the group"}, @${userName}!\nEnjoy your stay!`,
+                        body: `👋 **Welcome to ${threadName}!**\n━━━━━━━━━━━━━━━━\nHello @${userName}, enjoy your stay!\nRead the rules if there are any.`,
                         mentions: [{ tag: `@${userName}`, id: user.userFbId }]
                     };
 
@@ -43,22 +53,22 @@ module.exports = {
             else if (logMessageType === "log:unsubscribe") {
                 const leftUserID = logMessageData.leftParticipantFbId;
                 
-                // Ignore if the bot itself left/kicked
-                if (leftUserID === api.getCurrentUserID()) return;
+                // Don't say goodbye to self
+                if (String(leftUserID) === String(api.getCurrentUserID())) return;
 
-                // Get user info to say their name
-                const userInfo = await api.getUserInfo(leftUserID);
-                const name = userInfo[leftUserID]?.name || "Facebook User";
+                // Attempt to get name (might fail if user blocked/deleted)
+                let name = "Facebook User";
+                try {
+                    const userInfo = await api.getUserInfo(leftUserID);
+                    name = userInfo[leftUserID]?.name || "Member";
+                } catch (e) {}
 
-                const msg = {
-                    body: `🚪 Goodbye, ${name}.\nWe will miss you! (maybe)`,
-                };
-
+                const msg = `🚪 **Goodbye, ${name}.**\nWe will miss you!`;
                 await api.sendMessage(msg, threadID);
             }
 
         } catch (err) {
-            console.error("Group event error:", err);
+            console.error("❌ Group Event Error:", err);
         }
     }
 };
