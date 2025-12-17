@@ -1,67 +1,43 @@
-const config = require("../config.json"); // Import config to use YOUR ID
-
 module.exports = {
     name: "leave",
     usePrefix: false,
-    description: "Make the bot leave a group or list groups.",
-    usage: "leave [list | number]",
-    version: "1.4", // Bumped version
+    description: "Make the bot leave the current group.",
+    usage: "leave",
     cooldown: 5,
     admin: true,
 
     async execute({ api, event, args }) {
         const threadID = event.threadID;
 
-        // --- FIXED: The redundant admin check was removed here. ---
-
-        if (!args[0] && event.isGroup === false) {
-            return api.sendMessage("⚠️ You can't use `leave` in private chat. Use `leave list` or `leave <number>` instead.", threadID);
+        // 1. Safety Check: Is this a group?
+        if (!event.isGroup) {
+            return api.sendMessage("⚠️ I can only leave groups, not private chats.", threadID);
         }
 
-        const threads = await api.getThreadList(100, null, ["INBOX"]);
-        const groupThreads = threads.filter(t => t.isGroup);
-
-        if (args[0] === "list") {
-            if (groupThreads.length === 0) return api.sendMessage("❌ No groups found.", threadID);
-
-            let msg = "📋 List of Groups:\n\n";
-            groupThreads.forEach((group, index) => {
-                msg += `${index + 1}. ${group.name || "Unnamed Group"} (${group.threadID})\n`;
-            });
-
-            return api.sendMessage(msg, threadID);
-        }
-
+        // 2. Prepare Goodbye Message
         const tagEveryone = {
-            body: "👋 Goodbye @everyone.",
+            body: "👋 Goodbye everyone! usage of the bot has been revoked.",
             mentions: [{
                 tag: "@everyone",
                 id: threadID
             }]
         };
 
-        if (!args[0]) {
-            return api.sendMessage(tagEveryone, threadID, () => {
-                api.removeUserFromGroup(api.getCurrentUserID(), threadID);
-            });
-        }
-
-        // FIX: Crash prevention
-        const index = parseInt(args[0]) - 1;
-        if (isNaN(index) || index < 0 || index >= groupThreads.length) {
-            return api.sendMessage("❌ Invalid group number.", threadID);
-        }
-
-        const group = groupThreads[index];
-
         try {
-            await api.sendMessage(tagEveryone, group.threadID, () => {
-                api.removeUserFromGroup(api.getCurrentUserID(), group.threadID);
-            });
-            return api.sendMessage(`✅ Left group: ${group.name || "Unnamed Group"}`, threadID);
+            // 3. Send message first, then leave
+            await api.sendMessage(tagEveryone, threadID);
+            
+            // 4. Leave the group
+            await api.removeUserFromGroup(api.getCurrentUserID(), threadID);
+            
         } catch (err) {
             console.error("❌ Error leaving group:", err);
-            return api.sendMessage("❌ Failed to leave the group.", threadID);
+            // If we can't send the message (maybe muted), try to force leave anyway
+            try {
+                await api.removeUserFromGroup(api.getCurrentUserID(), threadID);
+            } catch (e) {
+                api.sendMessage("❌ I am trying to leave, but Facebook is blocking the request.", threadID);
+            }
         }
     }
 };
