@@ -1,73 +1,52 @@
 module.exports = {
-    name: "add",
+    name: "kick",
     usePrefix: false,
-    admin: true, // Only you (Owner) can use this
-    description: "List groups the bot is in and add yourself to them.",
-    usage: "add list | add <number>",
+    admin: true,
+    description: "Remove a user from the group.",
+    usage: "kick (reply/mention)",
     cooldown: 5,
 
-    async execute({ api, event, args, config }) {
-        const { threadID } = event;
+    execute: async ({ api, event }) => {
+        const { threadID, messageReply, mentions } = event;
+        if (!event.isGroup) return api.sendMessage("❌ Groups only.", threadID);
 
-        // 1. Wrapper to catch crashes
+        // 1. Get Target ID
+        let targetID;
+        if (messageReply) targetID = messageReply.senderID;
+        else if (Object.keys(mentions).length > 0) targetID = Object.keys(mentions)[0];
+        else return api.sendMessage("⚠️ Reply to a user to kick.", threadID);
+
+        if (targetID === api.getCurrentUserID()) return api.sendMessage("❌ I cannot kick myself.", threadID);
+
+        api.sendMessage("👋 Begone!", threadID);
+
         try {
-            // Fetch the last 50 conversations (Safe limit to prevent crashing)
-            // We assume the bot is active in the group you want to join.
-            const threadList = await api.getThreadList(50, null, ["INBOX"]);
+            // 🔍 CHECK 1: NethWs3Dev Library (gcmember)
+            if (typeof api.gcmember === 'function') {
+                // This library uses a special function: gcmember("remove", id, thread)
+                await api.gcmember("remove", targetID, threadID);
+            } 
+            // 🔍 CHECK 2: Standard Libraries
+            else if (typeof api.removeUserFromGroup === 'function') {
+                await api.removeUserFromGroup(targetID, threadID);
+            } 
+            // 🔍 CHECK 3: Other Forks
+            else if (typeof api.removeParticipant === 'function') {
+                await api.removeParticipant(targetID, threadID);
+            } 
+            else {
+                throw new Error("No kick function found in this library version.");
+            }
+
+        } catch (err) {
+            console.error("Kick Error:", err);
             
-            // Filter: Keep only Group Chats
-            const groups = threadList.filter(t => t.isGroup);
-
-            // --- OPTION A: LIST GROUPS ---
-            // Usage: /add list
-            if (args[0] && args[0].toLowerCase() === "list") {
-                if (groups.length === 0) {
-                    return api.sendMessage("❌ No groups found in the bot's recent inbox.", threadID);
-                }
-
-                let msg = "📋 **Available Groups:**\n━━━━━━━━━━━━━━━━\n";
-                groups.forEach((group, i) => {
-                    const name = group.name || "Unnamed Group";
-                    msg += `**${i + 1}.** ${name}\nID: ${group.threadID}\n\n`;
-                });
-                msg += "━━━━━━━━━━━━━━━━\n💡 Usage: `/add <number>` to join.";
-                
-                return api.sendMessage(msg, threadID);
+            // Check for the "Add/Remove" object error from NethWs3Dev
+            if (err.type === "error_gc" || (err.error && err.error.includes("permissions"))) {
+                return api.sendMessage("❌ Failed: Permissions error. Make sure I am Admin and the target is NOT Admin.", threadID);
             }
 
-            // --- OPTION B: ADD OWNER TO GROUP ---
-            // Usage: /add 1
-            const index = parseInt(args[0]) - 1;
-
-            if (isNaN(index)) {
-                return api.sendMessage("⚠️ Invalid usage.\n1. Type `/add list` to see groups.\n2. Type `/add <number>` to join one.", threadID);
-            }
-
-            if (index < 0 || index >= groups.length) {
-                return api.sendMessage(`❌ Invalid number. Please choose between 1 and ${groups.length}.`, threadID);
-            }
-
-            const targetGroup = groups[index];
-            const ownerID = config.ownerID; // Gets your ID from config
-
-            api.sendMessage(`⏳ Adding you to **${targetGroup.name || "Unnamed Group"}**...`, threadID);
-
-            // Attempt to add YOU (Owner) to that group
-            await api.addUserToGroup(ownerID, targetGroup.threadID);
-            return api.sendMessage("✅ Success! Check your message requests if you don't see the group.", threadID);
-
-        } catch (error) {
-            console.error("Add Command Error:", error);
-            
-            // Specific error handling
-            if (error.error === 1357004) {
-                 return api.sendMessage("❌ Failed: The bot is not an Admin in that group, or the group does not allow members to add others.", threadID);
-            }
-            if (error.error === 1357031) {
-                 return api.sendMessage("❌ Failed: You are already in that group.", threadID);
-            }
-
-            return api.sendMessage("❌ An error occurred. The group might be full or private.", threadID);
+            api.sendMessage(`❌ Failed to kick user.`, threadID);
         }
     }
 };
