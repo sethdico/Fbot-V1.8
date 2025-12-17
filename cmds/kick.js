@@ -7,46 +7,22 @@ module.exports = {
     cooldown: 5,
 
     execute: async ({ api, event }) => {
-        const { threadID, messageReply, mentions } = event;
-        if (!event.isGroup) return api.sendMessage("❌ Groups only.", threadID);
-
-        // 1. Get Target ID
-        let targetID;
-        if (messageReply) targetID = messageReply.senderID;
-        else if (Object.keys(mentions).length > 0) targetID = Object.keys(mentions)[0];
-        else return api.sendMessage("⚠️ Reply to a user to kick.", threadID);
-
-        if (targetID === api.getCurrentUserID()) return api.sendMessage("❌ I cannot kick myself.", threadID);
-
-        api.sendMessage("👋 Begone!", threadID);
+        if (!event.isGroup) return api.sendMessage("❌ Groups only.", event.threadID);
+        
+        let targetID = event.messageReply ? event.messageReply.senderID : Object.keys(event.mentions)[0];
+        if (!targetID) return api.sendMessage("⚠️ Reply to a user to kick.", event.threadID);
 
         try {
-            // 🔍 CHECK 1: NethWs3Dev Library (gcmember)
+            // Try the NethWs3Dev function first
             if (typeof api.gcmember === 'function') {
-                // This library uses a special function: gcmember("remove", id, thread)
-                await api.gcmember("remove", targetID, threadID);
-            } 
-            // 🔍 CHECK 2: Standard Libraries
-            else if (typeof api.removeUserFromGroup === 'function') {
-                await api.removeUserFromGroup(targetID, threadID);
-            } 
-            // 🔍 CHECK 3: Other Forks
-            else if (typeof api.removeParticipant === 'function') {
-                await api.removeParticipant(targetID, threadID);
-            } 
-            else {
-                throw new Error("No kick function found in this library version.");
+                await api.gcmember("remove", targetID, event.threadID);
+            } else {
+                // Fallback for other versions
+                await api.removeUserFromGroup(targetID, event.threadID);
             }
-
+            api.sendMessage("👋 Begone!", event.threadID);
         } catch (err) {
-            console.error("Kick Error:", err);
-            
-            // Check for the "Add/Remove" object error from NethWs3Dev
-            if (err.type === "error_gc" || (err.error && err.error.includes("permissions"))) {
-                return api.sendMessage("❌ Failed: Permissions error. Make sure I am Admin and the target is NOT Admin.", threadID);
-            }
-
-            api.sendMessage(`❌ Failed to kick user.`, threadID);
+            api.sendMessage("❌ Failed to kick. Ensure I am Admin.", event.threadID);
         }
     }
 };
