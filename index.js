@@ -455,16 +455,32 @@ async function startBot() {
                 // Execute command
                 try {
                     console.log(`✅ Executing command: ${cmdName} for user ${senderID}`);
+                    
+                    // ==========================================
+                    // ⌨️ START FAKE TYPING HERE (INTEGRATED)
+                    // ==========================================
+                    api.sendTypingIndicator(true, event.threadID);
+
                     // Auto-react to show processing
                     if (cmd.cooldown > 2 && event.messageID) {
                         api.setMessageReaction("🕗", event.messageID, () => {}, true);
                     }
+                    
                     await cmd.execute({ api, event, args, config });
+                    
+                    // ==========================================
+                    // 🛑 STOP FAKE TYPING HERE (INTEGRATED)
+                    // ==========================================
+                    api.sendTypingIndicator(false, event.threadID);
+
                     // Success reaction
                     if (event.messageID) {
                         api.setMessageReaction("✅", event.messageID, () => {}, true);
                     }
                 } catch (e) {
+                    // Stop typing even if error
+                    api.sendTypingIndicator(false, event.threadID);
+
                     console.error(`❌ Command failed [${cmdName}]:`, e.message || e);
                     // Error reaction
                     if (event.messageID) {
