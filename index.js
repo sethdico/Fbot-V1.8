@@ -60,7 +60,6 @@ config.prefix = config.prefix || "/";
 config.autoRestart = config.autoRestart !== undefined ? config.autoRestart : true;
 config.aiApiKey = config.aiApiKey || "Koja";
 config.xdashApiKey = config.xdashApiKey || "3884224f549d964644816c61b1b65d84";
-
 const botPrefix = config.prefix;
 global.config = config; // Make available globally for all commands
 
@@ -118,7 +117,7 @@ app.get('/api/status', (req, res) => {
 app.post('/api/ai', async (req, res) => {
     const { command, query } = req.body;
     const allowedWebCommands = ['ai', 'webpilot', 'gemini', 'you'];
-    
+
     // Basic validation
     if (!command || !query) {
         return res.status(400).json({ 
@@ -126,7 +125,6 @@ app.post('/api/ai', async (req, res) => {
             reaction: '❌' 
         });
     }
-    
     if (!allowedWebCommands.includes(command.toLowerCase())) {
         return res.json({ 
             error: `Command '${command}' not supported on web. Use: ${allowedWebCommands.join(', ')}`, 
@@ -158,7 +156,6 @@ app.post('/api/ai', async (req, res) => {
         unsendMessage: () => {},
         createPost: () => Promise.resolve('https://facebook.com')
     };
-    
     const mockEvent = {
         threadID: 'web_chat',
         messageID: `web_${Date.now()}`,
@@ -176,7 +173,6 @@ app.post('/api/ai', async (req, res) => {
         const now = Date.now();
         const key = `web_user-${command}`;
         const cooldownAmount = 10 * 1000;
-        
         if (cooldowns.has(key)) {
             const expiration = cooldowns.get(key) + cooldownAmount;
             if (now < expiration) {
@@ -205,7 +201,7 @@ app.post('/api/ai', async (req, res) => {
     } catch (e) {
         console.error(`🌐 Web API Error [${command}]:`, e.message || e);
         res.status(500).json({ 
-            error: "Command execution failed. Try again later.", 
+            error: "Command execution failed. Try again later.",
             details: process.env.NODE_ENV === 'development' ? e.message : undefined,
             reaction: '❌' 
         });
@@ -221,7 +217,7 @@ app.listen(PORT, () => {
 // --- FILE LOADER ---
 function loadFiles() {
     console.log("\n📦 Loading commands and events...");
-    
+
     // Create cache directory if missing (prevents file errors)
     const cacheDir = path.resolve(__dirname, 'cache');
     if (!fs.existsSync(cacheDir)) {
@@ -231,13 +227,12 @@ function loadFiles() {
 
     const eventsDir = path.resolve(__dirname, 'events');
     const cmdsDir = path.resolve(__dirname, 'cmds');
-    
+
     // Load events
     let eventCount = 0;
     if (fs.existsSync(eventsDir)) {
         const eventFiles = fs.readdirSync(eventsDir).filter(f => f.endsWith('.js'));
         console.log(`ControlEvents: Found ${eventFiles.length} event files`);
-        
         for (const file of eventFiles) {
             try {
                 delete require.cache[require.resolve(path.join(eventsDir, file))];
@@ -260,7 +255,6 @@ function loadFiles() {
     if (fs.existsSync(cmdsDir)) {
         const cmdFiles = fs.readdirSync(cmdsDir).filter(f => f.endsWith('.js'));
         console.log(`ControlEvents: Found ${cmdFiles.length} command files`);
-        
         for (const file of cmdFiles) {
             try {
                 delete require.cache[require.resolve(path.join(cmdsDir, file))];
@@ -269,14 +263,12 @@ function loadFiles() {
                     // Register main command
                     global.commands.set(cmd.name.toLowerCase(), cmd);
                     cmdCount++;
-                    
                     // Register aliases
                     if (cmd.aliases && Array.isArray(cmd.aliases)) {
                         for (const alias of cmd.aliases) {
                             global.commands.set(alias.toLowerCase(), cmd);
                         }
                     }
-                    
                     console.log(`✅ Loaded command: ${cmd.name}` + 
                         (cmd.aliases?.length ? ` (aliases: ${cmd.aliases.join(', ')})` : ''));
                 } else {
@@ -297,10 +289,9 @@ const loadResult = loadFiles();
 
 // --- 🤖 BOT STARTUP ---
 const appStatePath = path.resolve(__dirname, 'appState.json');
-
 async function startBot() {
     console.log("\n🤖 Starting Facebook bot...");
-    
+
     // Validate appState.json
     if (!fs.existsSync(appStatePath)) {
         console.error("\n❌ FATAL ERROR: appState.json is missing!");
@@ -324,13 +315,13 @@ async function startBot() {
     login({ appState, logLevel: "silent" }, async (err, api) => {
         if (err) {
             console.error("\n❌ LOGIN FAILED!");
-            if (err.error === 'Error retrieving userID. This can be caused by a lot of things, including getting blocked by Facebook for logging in from an unknown location.');
+            if (err.error === 'Error retrieving userID. This can be caused by a lot of things, including getting blocked by Facebook for logging in from an unknown location.') {
                 console.error("👉 Your cookies have EXPIRED. Get fresh ones.");
-            else if (err.error === 'Your account is temporarily locked');
+            } else if (err.error === 'Your account is temporarily locked') {
                 console.error("👉 Your account is LOCKED. Log in manually on Facebook first.");
-            else
+            } else {
                 console.error("👉 Details:", err);
-            
+            }
             global.isLoggedIn = false;
             // Optional: Auto-restart after 5 minutes if failed
             setTimeout(() => {
@@ -386,13 +377,10 @@ async function startBot() {
                 return;
             }
 
-            // Event debugging (uncomment to see all events)
-            // console.log(`Event type: ${event.type}`, event);
-
             // Special command: Get your ID
             if (event.body === "/myid" || event.body === `${botPrefix}myid`) {
                 console.log(`🆔 User ${event.senderID} requested their ID`);
-                const msg = `🆔 Your Facebook User ID:\n${event.senderID}\n\n` +
+                const msg = `🆔 Your Facebook User ID:\n${event.senderID}\n` +
                            `💡 To set yourself as bot owner:\n` +
                            `1. Copy this ID\n` +
                            `2. Paste into config.json as "ownerID"\n` +
@@ -404,7 +392,6 @@ async function startBot() {
             if (event.body === "/debug" || event.body === `${botPrefix}debug`) {
                 const isOwner = String(event.senderID) === String(config.ownerID);
                 const isAdmin = config.admin.includes(String(event.senderID));
-                
                 const debugMsg = `🛠️ DEBUG INFORMATION\n` +
                                `━━━━━━━━━━━━━━━━━━━\n` +
                                `👤 Your ID: ${event.senderID}\n` +
@@ -415,7 +402,6 @@ async function startBot() {
                                `📊 Commands Loaded: ${global.commands.size}\n` +
                                `⏱️ Uptime: ${Math.floor(process.uptime())} seconds\n` +
                                `━━━━━━━━━━━━━━━━━━━`;
-                
                 return api.sendMessage(debugMsg, event.threadID);
             }
 
@@ -433,14 +419,12 @@ async function startBot() {
                 const args = event.body.slice(botPrefix.length).trim().split(/ +/);
                 const cmdName = args.shift().toLowerCase();
                 const cmd = global.commands.get(cmdName);
-
                 if (!cmd) return; // No such command
-                
+
                 // Permission check (before execution)
                 const senderID = String(event.senderID);
                 const isOwner = senderID === String(config.ownerID);
                 const isAdmin = config.admin.includes(senderID);
-                
                 if (cmd.admin && !isOwner && !isAdmin) {
                     console.log(`🚫 Permission denied for ${senderID} on command ${cmdName}`);
                     if (Math.random() > 0.7) { // 30% chance to respond
@@ -453,7 +437,6 @@ async function startBot() {
                 const now = Date.now();
                 const key = `${senderID}-${cmdName}`;
                 const cooldownAmount = (cmd.cooldown || 3) * 1000;
-                
                 if (cooldowns.has(key)) {
                     const expiration = cooldowns.get(key) + cooldownAmount;
                     if (now < expiration) {
@@ -472,26 +455,21 @@ async function startBot() {
                 // Execute command
                 try {
                     console.log(`✅ Executing command: ${cmdName} for user ${senderID}`);
-                    
                     // Auto-react to show processing
                     if (cmd.cooldown > 2 && event.messageID) {
                         api.setMessageReaction("🕗", event.messageID, () => {}, true);
                     }
-                    
                     await cmd.execute({ api, event, args, config });
-                    
                     // Success reaction
                     if (event.messageID) {
                         api.setMessageReaction("✅", event.messageID, () => {}, true);
                     }
                 } catch (e) {
                     console.error(`❌ Command failed [${cmdName}]:`, e.message || e);
-                    
                     // Error reaction
                     if (event.messageID) {
                         api.setMessageReaction("❌", event.messageID, () => {}, true);
                     }
-                    
                     // User-friendly error message (only for owner)
                     if (isOwner) {
                         api.sendMessage(
@@ -517,7 +495,7 @@ async function startBot() {
         console.log("\n🎉 BOT IS NOW FULLY OPERATIONAL!");
         console.log(`💬 Use ${botPrefix}help to see available commands`);
         console.log(`🌐 Web interface: http://localhost:${PORT}`);
-        
+
         // Send startup notification to owner
         setTimeout(() => {
             api.sendMessage(
@@ -537,27 +515,4 @@ startBot();
 
 // Auto-reload commands on change (development only)
 if (process.env.NODE_ENV !== 'production') {
-    fs.watch(path.resolve(__dirname, 'cmds'), (eventType, filename) => {
-        if (filename && filename.endsWith('.js')) {
-            console.log(`♻️ Reloading command: ${filename}`);
-            loadFiles();
-        }
-    });
-    
-    fs.watch(path.resolve(__dirname, 'events'), (eventType, filename) => {
-        if (filename && filename.endsWith('.js')) {
-            console.log(`♻️ Reloading event: ${filename}`);
-            loadFiles();
-        }
-    });
-}
-
-// Graceful shutdown
-process.on('SIGINT', async () => {
-    console.log("\n👋 Shutting down gracefully...");
-    if (global.isLoggedIn) {
-        process.exit(0);
-    } else {
-        process.exit(1);
-    }
-});
+   
