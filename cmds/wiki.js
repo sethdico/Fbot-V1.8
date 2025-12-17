@@ -23,26 +23,24 @@ module.exports = {
         try {
             api.setMessageReaction("🔍", messageID, () => {}, true);
 
-            // Step 1: Search for the best-matching page
-            const searchUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(query)}`;
-            const response = await axios.get(searchUrl, { timeout: 8000 });
-
+            // ✅ Use proper encodeURIComponent for the page title
+            const safeQuery = query.replace(/\s+/g, '_'); // Wikipedia uses underscores
+            const searchUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(safeQuery)}`;
+            
+            const response = await axios.get(searchUrl, { timeout: 10000 });
             const data = response.data;
-            if (!data || !data.title || data.type === "disambiguation") {
-                throw new Error("Disambiguation or no result");
+
+            if (!data || data.type === "disambiguation" || !data.extract) {
+                throw new Error("No valid summary found");
             }
 
-            let summary = data.extract || "No summary available.";
-            // Clean up extra newlines
-            summary = summary.replace(/\n+/g, " ").trim();
-
-            // Truncate if too long (Messenger has limits)
+            let summary = data.extract.replace(/\n+/g, " ").trim();
             if (summary.length > 800) {
                 summary = summary.substring(0, 800).trim() + "...";
             }
 
             const title = data.title;
-            const url = data.content_urls?.desktop?.page || `https://en.wikipedia.org/wiki/${encodeURIComponent(query)}`;
+            const url = data.content_urls?.desktop?.page || `https://en.wikipedia.org/wiki/${safeQuery}`;
 
             const message = `📘 **Wikipedia: ${title}**
 ━━━━━━━━━━━━━━━━
@@ -54,17 +52,16 @@ ${summary}
             api.setMessageReaction("✅", messageID, () => {}, true);
 
         } catch (error) {
-            console.error("Wikipedia Error:", error.message);
+            console.error("Wikipedia Error Details:", error.response?.status, error.message);
 
-            // Handle specific cases
-            if (error.response && error.response.status === 404) {
+            if (error.response?.status === 404) {
                 api.sendMessage("❌ No Wikipedia article found for that topic.", threadID, messageID);
-            } else if (error.code === "ECONNABORTED") {
+            } else if (error.code === 'ECONNABORTED') {
                 api.sendMessage("⏳ Wikipedia is slow. Try again in a few seconds.", threadID, messageID);
-            } else if (error.message?.includes("Disambiguation")) {
-                api.sendMessage("❓ Too many results. Please be more specific (e.g., 'Marie Curie scientist').", threadID, messageID);
+            } else if (error.message?.includes("disambiguation")) {
+                api.sendMessage("❓ The topic is ambiguous. Try: `wiki Marie Curie scientist`", threadID, messageID);
             } else {
-                api.sendMessage("❌ Failed to fetch Wikipedia data.", threadID, messageID);
+                api.sendMessage("❌ Failed to fetch Wikipedia data. Try a simpler topic.", threadID, messageID);
             }
 
             api.setMessageReaction("❌", messageID, () => {}, true);
