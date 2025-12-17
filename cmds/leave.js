@@ -6,7 +6,7 @@ module.exports = {
     cooldown: 5,
     admin: true,
 
-    async execute({ api, event, args }) {
+    async execute({ api, event }) {
         const threadID = event.threadID;
 
         // 1. Safety Check: Is this a group?
@@ -16,7 +16,7 @@ module.exports = {
 
         // 2. Prepare Goodbye Message
         const tagEveryone = {
-            body: "👋 Goodbye everyone! usage of the bot has been revoked.",
+            body: "👋 Goodbye everyone! Usage of the bot has been revoked.",
             mentions: [{
                 tag: "@everyone",
                 id: threadID
@@ -24,20 +24,28 @@ module.exports = {
         };
 
         try {
-            // 3. Send message first, then leave
+            // 3. Send message first
             await api.sendMessage(tagEveryone, threadID);
             
-            // 4. Leave the group
-            await api.removeUserFromGroup(api.getCurrentUserID(), threadID);
-            
+            // 4. Get Bot ID and ensure it is a String (Fixes some library glitches)
+            const botID = String(api.getCurrentUserID());
+
+            console.log(`⚠️ Attempting to remove user: ${botID} from thread: ${threadID}`);
+
+            // 5. Attempt to leave
+            await api.removeUserFromGroup(botID, threadID);
+            console.log("✅ Successfully left the group.");
+
         } catch (err) {
-            console.error("❌ Error leaving group:", err);
-            // If we can't send the message (maybe muted), try to force leave anyway
-            try {
-                await api.removeUserFromGroup(api.getCurrentUserID(), threadID);
-            } catch (e) {
-                api.sendMessage("❌ I am trying to leave, but Facebook is blocking the request.", threadID);
+            console.error("❌ CRITICAL LEAVE ERROR:", err);
+
+            // Check for specific Facebook errors
+            if (err.error === 1357004) {
+                 return api.sendMessage("❌ I cannot leave because I am the Group Creator or the only Admin. Please add another Admin or remove me manually.", threadID);
             }
+
+            // Fallback message
+            api.sendMessage(`❌ Failed to leave.\nError: ${err.error || err.message || "Unknown"}\n\n👉 Please kick me manually.`, threadID);
         }
     }
 };
