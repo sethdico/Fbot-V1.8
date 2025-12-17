@@ -3,16 +3,19 @@ module.exports = {
     name: "help",
     usePrefix: false,
     usage: "help [command] | help all",
-    version: "6.0",
-    description: "Smart command menu with auto-categorized AI, fun, admin, and more.",
+    version: "6.1",
+    description: "Smart help menu with auto-categories and no duplicates.",
     execute({ api, event, args }) {
         const { threadID, messageID } = event;
-        const botPrefix = (global.config && typeof global.config.prefix === 'string') ? global.config.prefix : "/";
+        const botPrefix = (global.config && typeof global.config.prefix === 'string') 
+            ? global.config.prefix 
+            : "/";
 
-        // Get unique list of commands (avoid alias duplicates)
-        const allCommands = [...new Map(global.commands.entries()).values()].filter(cmd => cmd.name);
+        // ✅ Get UNIQUE command objects (not per alias)
+        const uniqueCommands = [...new Map(global.commands.entries()).values()]
+            .filter(cmd => cmd.name); // Only valid commands
 
-        // --- 1. Handle: /help <specific command> ---
+        // --- /help <command> ---
         if (args.length > 0 && args[0].toLowerCase() !== "all") {
             const cmdName = args[0].toLowerCase();
             const cmd = global.commands.get(cmdName);
@@ -39,9 +42,9 @@ module.exports = {
             );
         }
 
-        // --- 2. Handle: /help all ---
+        // --- /help all ---
         if (args[0]?.toLowerCase() === "all") {
-            const sorted = allCommands.sort((a, b) => a.name.localeCompare(b.name));
+            const sorted = uniqueCommands.sort((a, b) => a.name.localeCompare(b.name));
             let msg = `╔══════════════════╗
      🤖 ALL COMMANDS (A-Z)
 ╚══════════════════╝\n`;
@@ -54,7 +57,7 @@ module.exports = {
             return api.sendMessage(msg, threadID, messageID);
         }
 
-        // --- 3. Auto-Categorize Commands Dynamically ---
+        // --- AUTO-CATEGORIZED MENU (NO DUPLICATES!) ---
         const categories = {
             "🤖 AI & Smart Tools": [],
             "🎮 Entertainment & Fun": [],
@@ -63,16 +66,14 @@ module.exports = {
             "📦 Others": []
         };
 
-        // Keywords for auto-detection
         const aiKeywords = ["ai", "gemini", "gpt", "copilot", "you", "webpilot", "quill", "venice", "aria", "xdash", "nano", "bard", "vision"];
         const funKeywords = ["8ball", "bible", "48laws", "deepimg", "lyrics", "pinterest", "spotify", "post"];
-        const utilKeywords = ["dict", "trans", "remind", "uptime", "myid", "prefix", "debug", "define", "meaning"];
+        const utilKeywords = ["dict", "trans", "remind", "uptime", "myid", "prefix", "debug", "define", "meaning", "wiki"];
 
-        allCommands.forEach(cmd => {
+        uniqueCommands.forEach(cmd => {
             const name = cmd.name.toLowerCase();
             let placed = false;
 
-            // Skip if already categorized
             if (cmd.admin) {
                 categories["👑 Admin & System"].push(cmd);
                 placed = true;
@@ -95,7 +96,7 @@ module.exports = {
             }
         });
 
-        // --- 4. Build Final Message ---
+        // --- BUILD MESSAGE ---
         let msg = `╔══════════════════╗
      🤖 SMART HELP MENU
 ╚══════════════════╝\n`;
@@ -103,17 +104,19 @@ module.exports = {
         for (const [category, cmds] of Object.entries(categories)) {
             if (cmds.length > 0) {
                 msg += `\n➤ **${category}**\n`;
-                cmds.sort((a, b) => a.name.localeCompare(b.name)).forEach(cmd => {
-                    const adminTag = cmd.admin ? " 👑" : "";
-                    const cooldownTag = cmd.cooldown ? ` ⏱️${cmd.cooldown}s` : "";
-                    msg += `  • ${botPrefix}${cmd.name}${adminTag}${cooldownTag}\n`;
-                });
+                cmds
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .forEach(cmd => {
+                        const adminTag = cmd.admin ? " 👑" : "";
+                        const cooldownTag = cmd.cooldown ? ` ⏱️${cmd.cooldown}s` : "";
+                        msg += `  • ${botPrefix}${cmd.name}${adminTag}${cooldownTag}\n`;
+                    });
             }
         }
 
         msg += `\n💡 Type \`${botPrefix}help all\` to see all commands.`;
         msg += `\n💡 Type \`${botPrefix}help <command>\` for usage details.`;
 
-        return api.sendMessage(msg, threadID, messageID);
+        api.sendMessage(msg, threadID, messageID);
     }
 };
