@@ -27,25 +27,29 @@ module.exports = {
             // 3. Send message first
             await api.sendMessage(tagEveryone, threadID);
             
-            // 4. Get Bot ID and ensure it is a String (Fixes some library glitches)
             const botID = String(api.getCurrentUserID());
 
-            console.log(`⚠️ Attempting to remove user: ${botID} from thread: ${threadID}`);
+            // 4. 🔍 NethWs3Dev Library Support (The Critical Fix)
+            if (typeof api.gcmember === 'function') {
+                // api.gcmember("remove", userID, threadID)
+                await api.gcmember("remove", botID, threadID);
+            } 
+            // Standard Library Fallbacks
+            else if (typeof api.removeUserFromGroup === 'function') {
+                await api.removeUserFromGroup(botID, threadID);
+            } 
+            else if (typeof api.removeParticipant === 'function') {
+                await api.removeParticipant(botID, threadID);
+            }
+            else {
+                throw new Error("No remove function found in API.");
+            }
 
-            // 5. Attempt to leave
-            await api.removeUserFromGroup(botID, threadID);
             console.log("✅ Successfully left the group.");
 
         } catch (err) {
-            console.error("❌ CRITICAL LEAVE ERROR:", err);
-
-            // Check for specific Facebook errors
-            if (err.error === 1357004) {
-                 return api.sendMessage("❌ I cannot leave because I am the Group Creator or the only Admin. Please add another Admin or remove me manually.", threadID);
-            }
-
-            // Fallback message
-            api.sendMessage(`❌ Failed to leave.\nError: ${err.error || err.message || "Unknown"}\n\n👉 Please kick me manually.`, threadID);
+            console.error("Leave Error:", err);
+            api.sendMessage("❌ I tried to leave, but the library function failed. Please kick me manually.", threadID);
         }
     }
 };
