@@ -1,17 +1,22 @@
-// cmds/help.js
 module.exports = {
     name: "help",
     aliases: ["commands", "menu", "h"],
     usePrefix: false,
     admin: false,
     cooldown: 3,
-    version: "6.0",
+    version: "6.1",
     usage: "help [command] | help all | help category <name>",
-    description: "Shows command list, details, or categories. Use to explore bot capabilities.",
+    description: "Shows command list, details, or categories.",
+    
     execute({ api, event, args }) {
         const { threadID, messageID } = event;
         const botPrefix = global.config?.prefix || "/";
-        const uniqueCommands = [...new Map(global.commands.map(cmd => [cmd.name, cmd])).values()];
+
+        // FIX: Convert Map to Array properly
+        const commandsArray = Array.from(global.commands.values());
+        
+        // Deduplicate commands (remove aliases from the visual list)
+        const uniqueCommands = [...new Map(commandsArray.map(cmd => [cmd.name, cmd])).values()];
         
         // Helper: Format command display
         const formatCommand = (cmd) => {
@@ -64,7 +69,7 @@ module.exports = {
                 msg += `${formatCommand(cmd)}\n`;
             });
             
-            msg += `\n💡 Tip: Type "${botPrefix}help <command>" for detailed information about a specific command.`;
+            msg += `\n💡 Tip: Type "${botPrefix}help <command>" for detailed information.`;
             return api.sendMessage(msg, threadID, messageID);
         }
 
@@ -74,7 +79,6 @@ module.exports = {
             const categories = getCategories();
             
             if (!categoryName) {
-                // Show category list
                 let categoryList = `╔═════════════════════════╗
         🗂️ CATEGORIES
 ╚═════════════════════════╝\n`;
@@ -88,14 +92,12 @@ module.exports = {
                 return api.sendMessage(categoryList, threadID, messageID);
             }
             
-            // Find matching category (case-insensitive)
             const matchingCategory = Object.keys(categories).find(cat => 
-                cat.toLowerCase().includes(categoryName.toLowerCase()) ||
-                categoryName.toLowerCase().includes(cat.toLowerCase())
+                cat.toLowerCase().includes(categoryName.toLowerCase())
             );
             
             if (!matchingCategory) {
-                return api.sendMessage(`❌ Category "${categoryName}" not found. Type "${botPrefix}help category" to see available categories.`, threadID, messageID);
+                return api.sendMessage(`❌ Category "${categoryName}" not found.`, threadID, messageID);
             }
             
             const cmdsInCategory = categories[matchingCategory];
@@ -111,59 +113,33 @@ module.exports = {
             return api.sendMessage(catMsg, threadID, messageID);
         }
 
-        // 4. DEFAULT HELP - CATEGORIZED VIEW
+        // 4. DEFAULT HELP
         const categories = getCategories();
         let msg = `╔═════════════════════════╗
        🤖 FBOT V1.8 HELP
 ╚═════════════════════════╝
-👋 Hello! I'm Amadeus, a powerful Facebook Messenger bot created by Sethdico.
+👋 Hello! I am a bot created by Sethdico.
 
-📚 **Command Categories:**
-`;
+📚 **Command Categories:**\n`;
         
-        // Show category summary
         Object.entries(categories).forEach(([category, cmds], index) => {
             const emoji = ["🤖", "🎮", "🌍", "⚡", "👑", "🔄"][index % 6] || "📁";
             msg += `${emoji} **${category}** (${cmds.length})\n`;
         });
         
-        msg += `
-🔍 **How to use:**
-• View all commands: \`${botPrefix}help all\`
-• View a category: \`${botPrefix}help category <name>\`
-• Get command details: \`${botPrefix}help <command>\`
-
-💡 **Example:** \`${botPrefix}help ai\` shows details about the AI command.
-
-🌐 **Web Access:** Visit http://localhost:3000 for the web interface.
-        `;
+        msg += `\n🔍 Use \`${botPrefix}help all\` to see every command.`;
         
         return api.sendMessage(msg, threadID, messageID);
     }
 };
 
-// Helper function: Define command categories
 function getCategories() {
     return {
-        "🤖 AI & Smart Tools": [
-            "ai", "gemini", "gptnano", "you", "webpilot", 
-            "aria", "copilot", "xdash", "venice", "deepimg", "quillbot"
-        ],
-        "🎮 Entertainment & Fun": [
-            "8ball", "bible", "48laws"
-        ],
-        "🌍 Language Tools": [
-            "dict", "translate"
-        ],
-        "⚡ Utilities & Info": [
-            "remind", "uptime", "debug", "unsend"
-        ],
-        "👑 Admin & System": [
-            "add", "kick", "leave", "notify", "welcome", 
-            "changeavatar", "cmd", "api_debug", "restart"
-        ],
-        "🔄 Group Management": [
-            "welcome", "kick", "add", "notify"
-        ]
+        "🤖 AI & Smart Tools": ["ai", "gemini", "gptnano", "you", "webpilot", "aria", "copilot", "xdash", "venice", "deepimg", "quillbot"],
+        "🎮 Entertainment": ["8ball", "bible", "48laws"],
+        "🌍 Language": ["dict", "translate"],
+        "⚡ Utilities": ["remind", "uptime", "debug", "unsend"],
+        "👑 Admin": ["add", "kick", "leave", "notify", "welcome", "changeavatar", "cmd", "api_debug", "restart"],
+        "🔄 Group": ["welcome", "kick", "add", "notify", "pin", "theme", "nickname"]
     };
 }
