@@ -136,8 +136,14 @@ const startBot = async () => {
 
                 if (cmd) {
                     if (cmd.admin) {
-                        const isOwner = event.senderID === config.ownerID;
-                        const isAdmin = config.admin && config.admin.includes(event.senderID);
+                        // --- 🟢 FIX: FORCE STRING COMPARISON TO PREVENT ERRORS ---
+                        const senderID = String(event.senderID);
+                        const ownerID = String(config.ownerID);
+                        const adminList = (config.admin || []).map(id => String(id));
+
+                        const isOwner = senderID === ownerID;
+                        const isAdmin = adminList.includes(senderID);
+
                         if (!isOwner && !isAdmin) return api.sendMessage("🔒 Admin only.", event.threadID);
                     }
 
