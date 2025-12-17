@@ -34,9 +34,23 @@ if (fs.existsSync(configPath)) {
 
 const botPrefix = config.prefix || "/";
 
-// --- 🌐 WEB SERVER 🌐 ---
-app.get('/', (req, res) => res.send('🤖 Amadeus Bot is Active.'));
+// ===============================================
+// --- 🌐 MODIFIED WEB SERVER (SERVES INDEX.HTML) ---
+// ===============================================
+
+// 1. Serve static files (like CSS/images, although yours are inline, this is necessary)
+app.use(express.static(path.join(__dirname))); 
+
+// 2. Route for the root URL (/) to send the index.html file
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
 app.listen(PORT, () => console.log(`🌐 Server running on Port ${PORT}`));
+
+// ===============================================
+// --- END MODIFIED SECTION ---
+// ===============================================
 
 global.events = new Map();
 global.commands = new Map();
