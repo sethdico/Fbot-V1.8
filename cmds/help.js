@@ -7,7 +7,7 @@ module.exports = {
     description: "Shows all commands or detailed info for a specific one.",
     execute({ api, event, args }) {
         const { threadID, messageID } = event;
-        const botPrefix = global.config?.prefix || "/";
+        const botPrefix = (global.config && typeof global.config.prefix === 'string') ? global.config.prefix : "/";
         const commands = [...new Set(global.commands.values())];
 
         // --- 1. Handle: /help <specific command> ---
