@@ -3,53 +3,378 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Shoti Video Fetcher</title>
+    <title>SYSTEM_FBOT_V1.8</title>
+    <!-- Import Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
     <style>
+        :root {
+            --bg-color: #050505;
+            --text-color: #e0e0e0;
+            --terminal-bg: #000000;
+            --highlight: #ffffff; 
+            --accent: #ff0000; /* Glitch Red */
+            --border: 2px solid white;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: Arial, sans-serif;
-            text-align: center;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Courier New', Courier, monospace;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
             padding: 20px;
+            /* Scanlines */
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 0, 0, 0.15),
+                rgba(0, 0, 0, 0.15) 1px,
+                transparent 1px,
+                transparent 2px
+            );
         }
-        button {
-            padding: 10px 20px;
+
+        /* --- LAYOUT --- */
+        .main-container {
+            display: grid;
+            grid-template-columns: 300px 1fr; /* Sidebar + Main */
+            max-width: 1000px;
+            margin: 5vh auto;
+            gap: 20px;
+            width: 100%;
+        }
+
+        /* --- LEFT SIDE: PROFILE --- */
+        .profile-section {
+            border: var(--border);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            background: var(--terminal-bg);
+            box-shadow: 10px 10px 0px rgba(255, 255, 255, 0.1);
+        }
+
+        .profile-img {
+            width: 150px;
+            height: 150px;
+            object-fit: cover;
+            border: 2px solid white;
+            filter: grayscale(100%) contrast(1.2);
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            line-height: 1;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: -2px;
+        }
+
+        .bio {
+            font-size: 12px;
+            background: white;
+            color: black;
+            padding: 5px;
+            font-weight: bold;
+            transform: skew(-10deg);
+            margin-bottom: 20px;
+        }
+
+        /* --- RIGHT SIDE: TERMINAL --- */
+        .terminal-window {
+            border: var(--border);
+            background: #0a0a0a;
+            height: 500px;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            box-shadow: -10px 10px 0px rgba(255, 255, 255, 0.1);
+        }
+
+        .terminal-header {
+            background: white;
+            color: black;
+            padding: 5px 10px;
+            font-weight: bold;
+            font-size: 14px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .terminal-output {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            font-size: 14px;
+            line-height: 1.5;
+            color: #0f0; /* Classic Terminal Green Text */
+            text-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
+        }
+
+        /* Custom Scrollbar */
+        .terminal-output::-webkit-scrollbar { width: 8px; }
+        .terminal-output::-webkit-scrollbar-track { background: #000; }
+        .terminal-output::-webkit-scrollbar-thumb { background: #fff; }
+
+        .terminal-input-area {
+            border-top: 1px solid white;
+            padding: 10px;
+            display: flex;
+            background: black;
+        }
+
+        .prompt-char {
+            color: #0f0;
+            margin-right: 10px;
+            font-weight: bold;
+        }
+
+        input {
+            background: transparent;
+            border: none;
+            color: white;
+            font-family: 'Courier New', Courier, monospace;
             font-size: 16px;
-            cursor: pointer;
+            width: 100%;
+            outline: none;
         }
-        video {
+
+        /* --- WEIRD FLOATING BUTTONS --- */
+        .controls {
+            grid-column: 1 / -1; /* Span full width */
+            display: flex;
+            justify-content: flex-end;
+            gap: 15px;
+            flex-wrap: wrap;
             margin-top: 20px;
-            max-width: 100%;
-            display: none;
         }
+
+        .btn {
+            background: black;
+            color: white;
+            border: 2px solid white;
+            padding: 15px 25px;
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 14px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            transition: 0.1s;
+            position: relative;
+        }
+
+        /* Weird offset hover effect */
+        .btn:hover {
+            top: -3px;
+            left: -3px;
+            box-shadow: 6px 6px 0px white;
+            background: white;
+            color: black;
+        }
+
+        .btn:active {
+            top: 0;
+            left: 0;
+            box-shadow: none;
+        }
+
+        /* Specific Button Styles */
+        .btn-cmd { border-color: #00ff00; color: #00ff00; }
+        .btn-cmd:hover { background: #00ff00; box-shadow: 6px 6px 0px white; }
+
+        .btn-gc { border-color: #0088ff; color: #0088ff; }
+        .btn-gc:hover { background: #0088ff; box-shadow: 6px 6px 0px white; }
+
+        /* Creator Tag */
+        .sys-tag {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            font-size: 10px;
+            opacity: 0.5;
+            transform: rotate(90deg);
+            transform-origin: left bottom;
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 768px) {
+            .main-container {
+                grid-template-columns: 1fr;
+            }
+            .terminal-window {
+                height: 400px;
+            }
+            .controls {
+                justify-content: center;
+            }
+        }
+
+        .typing::after {
+            content: '█';
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink { 50% { opacity: 0; } }
+
     </style>
 </head>
 <body>
 
-    <h1>Fetch Video from Shoti API</h1>
-    <button onclick="fetchVideo()">Get Video</button>
-    <video id="videoPlayer" controls></video>
+    <div class="sys-tag">SYS_ARCHITECT::SETHDICO</div>
+
+    <div class="main-container">
+        
+        <!-- LEFT: Profile -->
+        <div class="profile-section">
+            <img 
+                src="https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Ftse2.mm.bing.net%2Fth%2Fid%2FOIP.TKVswaLe7ZwFb41xjdpSGgHaHI%3Fpid%3DApi%26ucfimg%3D1&f=1&ipt=d412c60fb29de9e7c7d4cd2398fd289c52cac000f8fd7347fb5fbfbfdaee4492&ipo=images" 
+                alt="AVATAR" 
+                class="profile-img" 
+                onerror="this.src='https://i.pinimg.com/736x/83/63/3f/83633f6a2033069324622b7a429a1744.jpg'"
+            >
+            <h1>FBOT<br>V1.8</h1>
+            <div class="bio">ACADEMIC.SALVATION.UNIT // FEED_ME_HOMEWORK</div>
+            <p style="font-size: 10px; margin-top: 20px; opacity: 0.7;">
+                STATUS: ONLINE<br>
+                LATENCY: 23ms<br>
+                REGION: ASIA/MNL
+            </p>
+        </div>
+
+        <!-- RIGHT: Terminal -->
+        <div class="terminal-window">
+            <div class="terminal-header">
+                <span>CMD_PROMPT.EXE</span>
+                <span>[X]</span>
+            </div>
+            <div class="terminal-output" id="output">
+                <div>> INITIALIZING SYSTEM...</div>
+                <div>> CONNECTED TO FBOT V1.8 CORE</div>
+                <div>> TYPE A MESSAGE BELOW TO TEST AI...</div>
+                <br>
+                <div style="color: white;">[SYSTEM]: Welcome, User. I can help with school, entertainment, and more.</div>
+                <br>
+            </div>
+            <div class="terminal-input-area">
+                <span class="prompt-char">></span>
+                <input type="text" id="userInput" placeholder="Ask the AI or type /help..." autocomplete="off">
+            </div>
+        </div>
+
+        <!-- BOTTOM: Controls -->
+        <div class="controls">
+            
+            <button class="btn btn-cmd" onclick="showCommands()">
+                <i class="fas fa-list"></i> SYSTEM CMDS
+            </button>
+
+            <a href="https://m.me/j/AbZeDmZ0WFUPZ6Cr/" target="_blank" class="btn btn-gc">
+                <i class="fab fa-facebook-messenger"></i> ENTER GC
+            </a>
+
+            <a href="https://www.facebook.com/seth09asher" target="_blank" class="btn">
+                <i class="fab fa-facebook-f"></i> CREATOR
+            </a>
+
+        </div>
+
+    </div>
 
     <script>
-        async function fetchVideo() {
-            const apiUrl = "https://testapi2-919t.onrender.com/shoti";
+        const output = document.getElementById('output');
+        const input = document.getElementById('userInput');
 
-            try {
-                const response = await fetch(apiUrl);
-                const data = await response.json();
-
-                if (!data.url) {
-                    alert("Failed to fetch video.");
-                    return;
-                }
-
-                const videoPlayer = document.getElementById("videoPlayer");
-                videoPlayer.src = data.url;
-                videoPlayer.style.display = "block";
-                videoPlayer.play();
-            } catch (error) {
-                console.error("Error fetching video:", error);
-                alert("Error fetching video.");
-            }
+        // Function to print text to terminal
+        function print(text, isUser = false) {
+            const line = document.createElement('div');
+            line.innerHTML = isUser ? `> <span style="color: white;">${text}</span>` : `[BOT]: ${text}`;
+            line.style.marginBottom = "5px";
+            output.appendChild(line);
+            output.scrollTop = output.scrollHeight;
         }
+
+        // List of fake commands for display
+        function showCommands() {
+            const cmdList = `
+            <br>
+            ============ COMMAND LIST ============<br>
+            [AI] ai, gemini, gptnano, you, webpilot<br>
+            [FUN] shoti, 8ball, deepimg, 48laws<br>
+            [UTIL] trans, dict, remind, wiki<br>
+            [SYS] kick, add, leave, uptime<br>
+            ======================================<br>
+            `;
+            const line = document.createElement('div');
+            line.innerHTML = cmdList;
+            line.style.color = "#00ffff"; // Cyan for lists
+            output.appendChild(line);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        // Handle Input
+        input.addEventListener('keypress', async function (e) {
+            if (e.key === 'Enter') {
+                const text = input.value;
+                if (!text) return;
+
+                print(text, true); // Print user message
+                input.value = '';
+
+                // Simulate loading
+                const loadingLine = document.createElement('div');
+                loadingLine.innerHTML = `<span class="typing">PROCESSING...</span>`;
+                output.appendChild(loadingLine);
+                output.scrollTop = output.scrollHeight;
+
+                try {
+                    // --- NEW AI API LOGIC ---
+                    const systemPrompt = "You are a helpful AI that talks as if they are talking to a kid, simple english, always say that you are made by seth asher salinguhay only say this if asked.";
+                    const apiUrlBase = "https://api.kojaxd.dpdns.org/ai/customai";
+                    
+                    const params = new URLSearchParams({
+                        apikey: "Koja",
+                        prompt: text,
+                        system: systemPrompt
+                    });
+                    
+                    const apiUrl = `${apiUrlBase}?${params.toString()}`;
+                    
+                    const response = await fetch(apiUrl);
+                    const data = await response.json();
+
+                    output.removeChild(loadingLine); // Remove loading text
+                    
+                    // Check for message, result, or response
+                    const reply = data.message || data.result || data.response;
+
+                    if (reply) {
+                        print(reply);
+                    } else {
+                        print("SYSTEM ERROR: UNABLE TO COMPUTE or Empty response from API.");
+                    }
+
+                } catch (error) {
+                    output.removeChild(loadingLine);
+                    console.error("Fetch error:", error);
+                    print("CONNECTION FAILURE. CHECK NETWORK.");
+                }
+            }
+        });
     </script>
 
 </body>
