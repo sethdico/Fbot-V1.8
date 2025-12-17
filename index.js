@@ -3,6 +3,14 @@ const path = require('path');
 const express = require('express');
 const axios = require('axios');
 
+// --- GLOBAL STATE ---
+// New: Tracks if the bot successfully logged into Facebook
+global.isLoggedIn = false; 
+global.commands = new Map();
+global.events = new Map();
+const cooldowns = new Map();
+// --------------------
+
 // --- 🔧 LOAD LOGIN LIBRARY 🔧 ---
 let loginModule;
 let login;
@@ -35,28 +43,99 @@ if (fs.existsSync(configPath)) {
 const botPrefix = config.prefix || "/";
 
 // ===============================================
-// --- 🌐 MODIFIED WEB SERVER (SERVES INDEX.HTML) ---
+// --- 🌐 WEB SERVER & API ENDPOINTS ---
 // ===============================================
 
-// 1. Serve static files (like CSS/images, although yours are inline, this is necessary)
+// Middleware to parse JSON body for API requests
+app.use(express.json());
+
+// Serve the entire root directory as static files (for index.html)
 app.use(express.static(path.join(__dirname))); 
 
-// 2. Route for the root URL (/) to send the index.html file
+// Route for the root URL (/) to send the index.html file
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// --- API 1: STATUS CHECK (for dynamic status/latency) ---
+app.get('/api/status', (req, res) => {
+    res.json({
+        status: "Running",
+        isLoggedIn: global.isLoggedIn,
+        time: Date.now()
+    });
+});
+
+
+// --- API 2: AI COMMANDS (The Bridge to your cmds logic) ---
+app.post('/api/ai', async (req, res) => {
+    const { command, query } = req.body;
+    let reply = null;
+    let error = null;
+
+    try {
+        switch (command) {
+            case 'ai':
+                // Logic hard-coded from cmds/ai.js
+                const systemPrompt = "You are a helpful AI that talks as if they are talking to a kid, simple english, always say that you are made by seth asher salinguhay only say this if asked.";
+                const apiUrl = "https://api.kojaxd.dpdns.org/ai/customai";
+                
+                const response = await axios.get(apiUrl, {
+                    params: {
+                        apikey: "Koja",
+                        prompt: query,
+                        system: systemPrompt
+                    }
+                });
+                const data = response.data;
+                reply = data.message || data.result || data.response || data;
+                
+                if (!reply || reply.includes("Amadeus Bot is Active")) {
+                    error = "AI API status error or no meaningful response.";
+                    reply = null;
+                }
+                break;
+
+            case 'webpilot':
+                // Logic hard-coded from cmds/webpilot.js
+                const webpilotRes = await axios.get("https://betadash-api-swordslush-production.up.railway.app/webpilot", {
+                    params: { search: query },
+                    timeout: 35000
+                });
+                reply = webpilotRes.data?.response?.trim();
+                if (!reply) throw new Error("WebPilot returned empty response.");
+                reply = `🌐 **WebPilot**\n━━━━━━━━━━━━━━━━\n${reply}\n━━━━━━━━━━━━━━━━`;
+                break;
+            
+            case 'gemini':
+                // Logic hard-coded from cmds/gemini.js (simplified for text-only)
+                const geminiUrl = "https://norch-project.gleeze.com/api/gemini";
+                const geminiRes = await axios.get(geminiUrl, { params: { prompt: query } });
+                const geminiData = geminiRes.data;
+                reply = geminiData.message || geminiData.response || geminiData.result || geminiData.content;
+                if (!reply) throw new Error("Gemini returned empty response.");
+                reply = `✨ **Gemini Vision**\n━━━━━━━━━━━━━━━━\n${reply}\n━━━━━━━━━━━━━━━━`;
+                break;
+                
+            default:
+                error = `Command '${command}' not supported on this web interface.`;
+        }
+    } catch (e) {
+        console.error(`Web Command Error [${command}]:`, e);
+        error = `Error executing command: ${e.message || "Unknown error"}`;
+    }
+
+    res.json({ reply, error });
 });
 
 app.listen(PORT, () => console.log(`🌐 Server running on Port ${PORT}`));
 
 // ===============================================
-// --- END MODIFIED SECTION ---
+// --- END WEB SERVER SECTION ---
 // ===============================================
 
-global.events = new Map();
-global.commands = new Map();
-const cooldowns = new Map();
 
-// --- 📂 FILE LOADER 📂 ---
+// --- 📂 FILE LOADER (FB COMMANDS) 📂 ---
 function loadFiles() {
     const eventsDir = path.resolve(__dirname, 'events');
     const cmdsDir = path.resolve(__dirname, 'cmds');
@@ -104,8 +183,11 @@ const startBot = async () => {
     login({ appState }, (err, api) => {
         if (err) {
             console.error('❌ Login Failed. Cookies might be expired.', err);
+            global.isLoggedIn = false; // Fails to log in
             return;
         }
+
+        global.isLoggedIn = true; // Successfully logged in!
 
         api.setOptions({
             forceLogin: true,
@@ -116,11 +198,17 @@ const startBot = async () => {
         });
 
         console.log(`✅ Logged in successfully! ID: ${api.getCurrentUserID()}`);
-
+        
+        // --- CUSTOM SCHEDULER (Requires 'custom.js') ---
         if (config.ownerID) {
-            try { scheduleTasks(config.ownerID, api, config); } 
-            catch (e) { console.log("⚠️ Custom scheduler error."); }
+            try { 
+                const scheduleTasks = require('./custom'); 
+                scheduleTasks(config.ownerID, api, config); 
+            } catch (e) { 
+                console.log("⚠️ Custom scheduler error."); 
+            }
         }
+
 
         global.events.forEach((event, name) => {
             if (event.onStart) {
@@ -132,7 +220,6 @@ const startBot = async () => {
             if (listenErr) return console.error("Listener Error:", listenErr);
 
             // --- 🔧 ID HELPER FIX ---
-            // Type /myid to get your real UID immediately
             if(event.body === "/myid") {
                 console.log(`🆔 User requested ID: ${event.senderID}`);
                 return api.sendMessage(`🆔 Your UID: ${event.senderID}\n\nCopy this number and paste it into config.json as your "ownerID".`, event.threadID);
@@ -150,7 +237,6 @@ const startBot = async () => {
 
                 if (cmd) {
                     if (cmd.admin) {
-                        // --- 🟢 FIX: FORCE STRING COMPARISON TO PREVENT ERRORS ---
                         const senderID = String(event.senderID);
                         const ownerID = String(config.ownerID);
                         const adminList = (config.admin || []).map(id => String(id));
