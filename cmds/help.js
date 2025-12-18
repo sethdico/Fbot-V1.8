@@ -15,7 +15,7 @@ module.exports = {
         const categories = {
             "🤖 Chat & Assistants": [
                 "ai", "aria", "copilot", "gemini", "gptnano", 
-                "quillbot", "venice", "webpilot", "xdash", "you"
+                "quillbot", "venice", "webpilot", "you"
             ],
             "👥 Group Controls": [
                 "add", "gcinfo", "kick", "leave", "nickname", 
