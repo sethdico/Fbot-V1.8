@@ -1,18 +1,17 @@
 const axios = require("axios");
-const fs = require("fs");
-const path = require("path");
 
-// Use a persistent session per senderID, but avoid scraping HTML
+// Memory storage for user sessions
 const userSessions = new Map();
 
 module.exports = {
     name: "chipp",
     aliases: ["digital", "protege", "chip"],
     usePrefix: false,
-    description: "Chat with Digital Protégé (Memory + Auto-Fix).",
+    description: "Chat with Digital Protégé (Persistent Memory).",
     usage: "chipp <text> (reply to image or attach one)",
     cooldown: 5,
-    execute: async ({ api, event, args, config }) => {
+
+    execute: async ({ api, event, args }) => {
         const { threadID, messageID, messageReply, attachments, senderID } = event;
         const query = args.join(" ");
 
@@ -29,22 +28,44 @@ module.exports = {
 
         api.setMessageReaction("🧠", messageID, () => {}, true);
 
-        // Use session from ws3-fca context if available
-        const ctx = api.ctx;
-        if (!ctx) {
-            return api.sendMessage("❌ Internal error: API context missing.", threadID, messageID);
+        const SESSION_TIMEOUT = 60 * 60 * 1000; 
+        const now = Date.now();
+        let sessionData = userSessions.get(senderID);
+
+        if (sessionData && (now - sessionData.lastActive > SESSION_TIMEOUT)) {
+            sessionData = null;
+            api.sendMessage("⌛ Session expired. Resetting context...", threadID);
         }
 
         try {
-            // Always use the same session ID per user (no HTML scraping)
-            let sessionId = userSessions.get(senderID);
-            if (!sessionId) {
-                // Generate a deterministic session-like ID (not scraped)
-                sessionId = `chipp-session-${senderID}-${Date.now()}`;
-                userSessions.set(senderID, sessionId);
+            // STEP 1: Establish Session
+            if (!sessionData) {
+                const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+                const targetUrl = "https://digitalprotg-32922.chipp.ai/w/chat/";
+
+                const mainPage = await axios.get(targetUrl, { headers: { "User-Agent": userAgent } });
+                const html = mainPage.data;
+
+                // Improved Session Scraper (Chipp.ai specific)
+                let sessionIdMatch = html.match(/"chatSessionId":"([a-f0-9-]{36})"/);
+                if (!sessionIdMatch) sessionIdMatch = html.match(/\\"chatSessionId\\",\\"([a-f0-9-]{36})\\"/);
+                if (!sessionIdMatch) sessionIdMatch = html.match(/"session","([a-f0-9-]{36})"/);
+
+                if (!sessionIdMatch) {
+                    throw new Error("Could not find session. Try refreshing the bot.");
+                }
+
+                sessionData = {
+                    sessionId: sessionIdMatch[1],
+                    userAgent: userAgent,
+                    lastActive: Date.now()
+                };
+                userSessions.set(senderID, sessionData);
+            } else {
+                sessionData.lastActive = Date.now();
             }
 
-            // Prepare messages
+            // STEP 2: Handle Images
             let messages = [];
             if (imageUrl) {
                 const imgRes = await axios.get(imageUrl, { responseType: "arraybuffer" });
@@ -62,54 +83,50 @@ module.exports = {
                 messages.push({ role: "user", content: query });
             }
 
-            // Make API request using valid headers from ws3-fca context
+            // STEP 3: API Request
+            // Note: We use the local path as detected in the HTML provided
             const response = await axios.post(
                 "https://digitalprotg-32922.chipp.ai/w/chat/api/chat",
                 {
                     messages,
-                    sessionId,
+                    sessionId: sessionData.sessionId,
                     appNameId: "digitalprotg-32922"
                 },
                 {
                     headers: {
-                        "User-Agent": ctx.globalOptions.userAgent || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                        "User-Agent": sessionData.userAgent,
                         "Referer": "https://digitalprotg-32922.chipp.ai/w/chat/",
                         "Origin": "https://digitalprotg-32922.chipp.ai",
                         "Content-Type": "application/json"
                     },
-                    timeout: 25000
+                    responseType: 'text'
                 }
             );
 
-            // Parse and clean response
+            // STEP 4: Parse Vercel AI Stream
             const cleanText = response.data
                 .split('\n')
                 .map(line => {
-                    const match = line.match(/^\d+:"(.*)"$/);
+                    const match = line.match(/^0:"(.*)"$/); // Match the text chunks
                     if (match) {
                         try { return JSON.parse(`"${match[1]}"`); } catch {}
                     }
                     return "";
                 })
-                .filter(Boolean)
                 .join("");
 
             if (!cleanText.trim()) {
                 userSessions.delete(senderID);
-                throw new Error("Empty or invalid response from Chipp AI.");
+                throw new Error("AI returned an empty response. Restarting session...");
             }
 
-            api.sendMessage(
-                `🤖 **Digital Protégé**\n━━━━━━━━━━━━━━━━\n${cleanText}`,
-                threadID,
-                messageID
-            );
+            api.sendMessage(`🤖 **Digital Protégé**\n━━━━━━━━━━━━━━━━\n${cleanText}`, threadID, messageID);
             api.setMessageReaction("✅", messageID, () => {}, true);
 
         } catch (e) {
             userSessions.delete(senderID);
-            console.error("Chipp AI Error:", e.message || e);
-            api.sendMessage(`❌ Error: ${e.message || "Failed to reach Chipp AI."}`, threadID, messageID);
+            console.error("Chipp Error:", e.message);
+            api.sendMessage(`❌ Error: ${e.message}`, threadID, messageID);
             api.setMessageReaction("❌", messageID, () => {}, true);
         }
     }
