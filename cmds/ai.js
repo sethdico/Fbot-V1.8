@@ -9,7 +9,7 @@ module.exports = {
     name: "ai",
     aliases: ["chip", "amdus", "pai"],
     usePrefix: false,
-    description: "AI by Seth Asher Salinguhay with Real Image/File Sending.",
+    description: "AI by Seth Asher Salinguhay with image recognition, image generator/edit, real-time information and sends files like documents.",
     usage: "ai <message>",
     cooldown: 5,
 
