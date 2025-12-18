@@ -81,7 +81,7 @@ User Message: `;
             });
 
             api.sendMessage(
-                `🤖 **Digital Assistant**\n━━━━━━━━━━━━━━━━\n${aiResponse}`,
+                `🤖 **AI made by Asher**\n━━━━━━━━━━━━━━━━\n${aiResponse}`,
                 threadID,
                 messageID
             );
