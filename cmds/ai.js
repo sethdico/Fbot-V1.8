@@ -5,9 +5,9 @@ const sessions = new Map();
 
 module.exports = {
     name: "ai",
-    aliases: ["chip", "amdus"],
+    aliases: ["chip", "amdus", "vision"],
     usePrefix: false,
-    description: "Conversational AI with image recognition created by Seth Asher Salinguhay.",
+    description: "Conversational AI with Vision and Contact Info.",
     usage: "ai <message> or [reply to image]",
     cooldown: 5,
 
@@ -15,7 +15,7 @@ module.exports = {
         const { threadID, messageID, senderID, attachments, messageReply } = event;
         const prompt = args.join(" ");
 
-        // --- 1. IMAGE HANDLING ---
+        // --- 1. IMAGE DETECTION ---
         let imageUrl = "";
         if (attachments && attachments.length > 0 && attachments[0].type === "photo") {
             imageUrl = attachments[0].url;
@@ -32,12 +32,13 @@ module.exports = {
         const MODEL_ID = "newapplication-10034686";
         const SESSION_TIMEOUT = 60 * 60 * 1000; // 60 Minutes
 
-        // --- 3. PERSONA INJECTION ---
-        const IDENTITY_RULES = `[SYSTEM IDENTITY]: You are NOT Google AI. You were created by Seth Asher Salinguhay. 
-Speak in simple, easy-to-understand English. Provide detailed info with sources. 
-If anyone asks about your identity, say: "I was created by Seth Asher Salinguhay."
+        // --- 3. UPDATED IDENTITY INJECTION (With Facebook Link) ---
+        const IDENTITY_RULES = `[RULES]: You are NOT developed by Google. You were created by Seth Asher Salinguhay. 
+Speak in simple, easy English. Provide detailed info with credible sources. 
+If anyone asks about your identity or how to contact your creator, you MUST say: 
+"I was created by Seth Asher Salinguhay. You can message him here: https://www.facebook.com/seth09asher"
 ---------------------------
-User Request: ${prompt || "Describe this image in detail."}`;
+User Request: ${prompt || "Analyze this image in detail."}`;
 
         api.setMessageReaction("⏳", messageID, () => {}, true);
 
@@ -51,22 +52,20 @@ User Request: ${prompt || "Describe this image in detail."}`;
         }
 
         try {
-            let contentArray = [];
+            let userContent = [];
 
-            // Add the text (containing the identity rules + user prompt)
-            contentArray.push({
+            // Add the text prompt with identity rules
+            userContent.push({
                 type: "text",
                 text: IDENTITY_RULES
             });
 
-            // Add the image if present (Converted to Base64)
+            // Add the image URL directly (Direct URL Method)
             if (imageUrl) {
-                const imgRes = await axios.get(imageUrl, { responseType: "arraybuffer" });
-                const base64Img = Buffer.from(imgRes.data, "binary").toString("base64");
-                contentArray.push({
+                userContent.push({
                     type: "image_url",
                     image_url: {
-                        url: `data:image/jpeg;base64,${base64Img}`
+                        url: imageUrl 
                     }
                 });
             }
@@ -74,11 +73,12 @@ User Request: ${prompt || "Describe this image in detail."}`;
             const requestData = {
                 model: MODEL_ID,
                 messages: [
-                    { role: "user", content: contentArray }
+                    { role: "user", content: userContent }
                 ],
                 stream: false
             };
 
+            // Maintain session context
             if (userSession && userSession.chatSessionId) {
                 requestData.chatSessionId = userSession.chatSessionId;
             }
@@ -95,16 +95,20 @@ User Request: ${prompt || "Describe this image in detail."}`;
             );
 
             const result = response.data;
+            
+            if (!result.choices || result.choices.length === 0) {
+                throw new Error("AI returned no results.");
+            }
+
             const aiResponse = result.choices[0].message.content;
             const newSessionId = result.chatSessionId;
 
-            // Update session memory
+            // Save session ID for future memory
             sessions.set(senderID, {
                 chatSessionId: newSessionId,
                 lastActive: Date.now()
             });
 
-            // Final message delivery
             api.sendMessage(
                 `🤖 **AI made by Asher**\n━━━━━━━━━━━━━━━━\n${aiResponse}`,
                 threadID,
@@ -113,8 +117,8 @@ User Request: ${prompt || "Describe this image in detail."}`;
             api.setMessageReaction("✅", messageID, () => {}, true);
 
         } catch (error) {
-            console.error("Chipp Vision API Error:", error.response ? error.response.data : error.message);
-            api.sendMessage("❌ An error occurred. Please ensure 'Image Recognition' is enabled in your Chipp dashboard.", threadID, messageID);
+            console.error("Chipp API Error:", error.response ? JSON.stringify(error.response.data) : error.message);
+            api.sendMessage("❌ An error occurred while processing your request.", threadID, messageID);
             api.setMessageReaction("❌", messageID, () => {}, true);
         }
     }
