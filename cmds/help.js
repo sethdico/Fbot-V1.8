@@ -1,60 +1,78 @@
 module.exports = {
     name: "help",
-    aliases: ["h", "menu"],
-    usePrefix: false,
-    admin: false,
-    cooldown: 3,
-    description: "View the command list or get info about a specific command.",
-    usage: "help [command] | help all",
+    aliases: ["menu", "h", "commands"],
+    usePrefix: false, // Works with or without prefix
+    description: "Shows you the fun things I can do!",
+    usage: "help",
 
-    execute({ api, event, args }) {
-        const { threadID, messageID } = event;
-        const prefix = global.config?.prefix || "/";
+    execute: async ({ api, event, args, config }) => {
+        const { threadID, senderID } = event;
+        const prefix = config.prefix || "/";
 
-        // Get all unique commands and sort them alphabetically
+        // 1. Check Permissions (To hide admin commands from regular members)
+        const isOwner = String(senderID) === String(config.ownerID);
+        const isAdmin = config.admin.includes(String(senderID));
+        const hasPerms = isOwner || isAdmin;
+
+        // 2. Get and Sort Commands
         const commands = Array.from(global.commands.values());
-        const uniqueCmds = [...new Map(commands.map(c => [c.name, c])).values()]
-            .sort((a, b) => a.name.localeCompare(b.name));
+        // Remove duplicates (aliases)
+        const uniqueCmds = [...new Map(commands.map(c => [c.name, c])).values()];
+        
+        // Filter: Show only commands the user can actually use
+        const visibleCmds = uniqueCmds.filter(cmd => {
+            if (cmd.admin && !hasPerms) return false; // Hide admin commands
+            return true;
+        });
 
-        // 1. DETAIL VIEW (Usage: /help ai)
-        // This checks if the user typed a specific command name
-        if (args.length > 0 && args[0].toLowerCase() !== "all") {
-            const query = args[0].toLowerCase();
-            const cmd = global.commands.get(query);
+        // Sort alphabetically (A-Z)
+        visibleCmds.sort((a, b) => a.name.localeCompare(b.name));
 
-            if (!cmd) {
-                return api.sendMessage(`❌ Command "${query}" not found. Type ${prefix}help all to see the list.`, threadID, messageID);
+        // ============================
+        // 🔎 HELP FOR SPECIFIC COMMAND
+        // ============================
+        if (args[0]) {
+            const cmdName = args[0].toLowerCase();
+            const cmd = global.commands.get(cmdName);
+
+            // If command doesn't exist or is hidden
+            if (!cmd || (cmd.admin && !hasPerms)) {
+                return api.sendMessage(`🤔 Hmmm... I don't know a command called "${cmdName}".`, threadID);
             }
 
-            const infoMsg = `📖 **COMMAND DETAILS: ${cmd.name.toUpperCase()}**\n` +
-                `━━━━━━━━━━━━━━━━━━\n` +
-                `📝 **Description:** ${cmd.description || "No description available."}\n` +
-                `⌨️ **Usage:** ${cmd.usage || prefix + cmd.name}\n` +
-                `⏱️ **Cooldown:** ${cmd.cooldown || 0}s\n` +
-                `👑 **Admin Only:** ${cmd.admin ? "Yes" : "No"}\n` +
-                `🔗 **Aliases:** ${cmd.aliases ? cmd.aliases.join(", ") : "None"}`;
+            const msg = `
+📘 **Help: ${cmd.name.toUpperCase()}**
+━━━━━━━━━━━━━━━━
+✨ **What it does:**
+${cmd.description || "Something cool!"}
 
-            return api.sendMessage(infoMsg, threadID, messageID);
+⌨️ **Type this:**
+${cmd.usage ? cmd.usage : `${prefix}${cmd.name}`}
+
+${cmd.aliases ? `🖇️ **Shortcuts:** ${cmd.aliases.join(", ")}` : ""}
+━━━━━━━━━━━━━━━━
+`;
+            return api.sendMessage(msg, threadID);
         }
 
-        // 2. FULL LIST VIEW (Usage: /help all)
-        if (args[0]?.toLowerCase() === "all") {
-            let listMsg = `📜 **FULL COMMAND LIST (${uniqueCmds.length})**\n\n`;
-            
-            uniqueCmds.forEach(c => {
-                listMsg += `• ${prefix}${c.name}${c.admin ? " 👑" : ""}\n`;
-            });
-            
-            listMsg += `\n💡 **Tip:** Type \`${prefix}help <command name>\` to see exactly how to use it!`;
-            return api.sendMessage(listMsg, threadID, messageID);
-        }
+        // ============================
+        // 📜 MAIN MENU (Clean List)
+        // ============================
+        const cmdList = visibleCmds.map(c => `/${c.name}`).join(", ");
+        const randomCmd = visibleCmds[Math.floor(Math.random() * visibleCmds.length)].name;
 
-        // 3. DEFAULT SIMPLE MENU (Usage: /help)
-        let defaultMsg = `╔═════════════════╗\n    🤖 **HELP SYSTEM**\n╚═════════════════╝\n`;
-        defaultMsg += `👋 Hello! I am a multi-functional AI assistant.\n\n`;
-        defaultMsg += `📜 Type \`${prefix}help all\` to see every command I can do.\n\n`;
-        defaultMsg += `🔍 Type \`${prefix}help <command>\` (example: \`${prefix}help ai\`) to see what a specific command does and how to use it.`;
-        
-        return api.sendMessage(defaultMsg, threadID, messageID);
+        const msg = `
+🤖 **Hello! I am ${config.botName || "Amadeus"}!**
+Here are the cool things I can do:
+
+━━━━━━━━━━━━━━━━
+${cmdList}
+━━━━━━━━━━━━━━━━
+
+💡 **Tip:** Want to know more about a command?
+Type: \`/help <name>\` (Example: \`/help ${randomCmd}\`)
+        `;
+
+        return api.sendMessage(msg, threadID);
     }
 };
