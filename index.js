@@ -2,14 +2,30 @@ const fs = require('fs');
 const path = require('path');
 const express = require('express');
 const axios = require('axios');
-const login = require('ws3-fca');
+
+// --- 🔧 ROBUST LIBRARY LOADER (The Fix) ---
+let login;
+try {
+    const loginModule = require('ws3-fca');
+    // Check all possible export locations
+    if (typeof loginModule === 'function') login = loginModule;
+    else if (loginModule && typeof loginModule.default === 'function') login = loginModule.default;
+    else if (loginModule && typeof loginModule.login === 'function') login = loginModule.login;
+    else {
+        throw new Error("Could not find login function in ws3-fca");
+    }
+} catch (e) {
+    console.error("❌ CRITICAL ERROR: ws3-fca library failed to load.");
+    console.error("Details:", e.message);
+    process.exit(1);
+}
 
 // --- GLOBAL STATE ---
 global.isLoggedIn = false;
 global.commands = new Map();
 global.events = new Map();
 const cooldowns = new Map();
-const threadRateLimit = new Map(); // Anti-Raid Protection
+const threadRateLimit = new Map();
 
 // --- CONFIGURATION ---
 console.log("🔧 Loading configuration...");
@@ -28,7 +44,6 @@ try {
     process.exit(1);
 }
 
-// Ensure IDs are strings
 config.ownerID = String(config.ownerID);
 config.admin = Array.isArray(config.admin) ? config.admin.map(id => String(id)) : [config.ownerID];
 config.prefix = config.prefix || "/";
@@ -36,9 +51,8 @@ global.config = config;
 
 console.log(`👑 Owner ID: ${config.ownerID}`);
 console.log(`🛡️ Safe Mode: ${config.safeMode ? "ON" : "OFF"}`);
-console.log(`⏱️ Queue Delay: ${config.messageDelay || 2000}ms`);
 
-// --- 🛡️ QUEUE SYSTEM (BAN PROTECTION) ---
+// --- 🛡️ QUEUE SYSTEM ---
 const msgQueue = [];
 let queueProcessing = false;
 
@@ -53,14 +67,13 @@ const processQueue = async () => {
         console.error("⚠️ Queue Task Error:", e.message);
     }
 
-    // Wait 2 seconds (or config delay) before next message
     setTimeout(() => {
         queueProcessing = false;
         processQueue();
     }, config.messageDelay || 2000);
 };
 
-// --- API WRAPPER (Make ws3-fca Safe) ---
+// --- API WRAPPER ---
 const createSafeApi = (rawApi) => {
     return {
         ...rawApi,
@@ -85,10 +98,7 @@ const createSafeApi = (rawApi) => {
                 processQueue();
             });
         },
-        // Direct pass-through for reactions (low ban risk)
         setMessageReaction: rawApi.setMessageReaction,
-        
-        // Helper for new AI streams
         sendMessageStream: async (text, stream, threadID) => {
              msgQueue.push({
                 execute: () => {
@@ -104,7 +114,7 @@ const createSafeApi = (rawApi) => {
 
 // --- 🌐 WEB SERVER ---
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: '5mb' }));
 app.use(express.static(path.join(__dirname)));
@@ -119,41 +129,6 @@ app.get('/api/status', (req, res) => {
     });
 });
 
-// Mock API for Web Interface
-app.post('/api/ai', async (req, res) => {
-    const { command, query } = req.body;
-    const allowedWebCommands = ['ai', 'webpilot', 'gemini', 'you'];
-
-    if (!allowedWebCommands.includes(command?.toLowerCase())) {
-        return res.json({ error: "Command not supported on web.", reaction: '❌' });
-    }
-
-    const cmd = global.commands.get(command.toLowerCase());
-    let webReply = "⚠️ No response.";
-    
-    // Mock API object for web
-    const mockApi = {
-        sendMessage: (content) => {
-            if (typeof content === 'string') webReply = content;
-            else if (content?.body) webReply = content.body;
-        },
-        setMessageReaction: () => {},
-        getCurrentUserID: () => 'web_user',
-    };
-
-    try {
-        await cmd.execute({
-            api: mockApi,
-            event: { threadID: 'web', senderID: 'web_user', body: query },
-            args: query.split(' '),
-            config: config
-        });
-        res.json({ reply: webReply, reaction: '✅' });
-    } catch (e) {
-        res.status(500).json({ error: "Execution failed", reaction: '❌' });
-    }
-});
-
 app.listen(PORT, () => {
     console.log(`🌐 Web interface: http://localhost:${PORT}`);
 });
@@ -164,18 +139,16 @@ function loadFiles() {
     const eventsDir = path.resolve(__dirname, 'events');
     const cmdsDir = path.resolve(__dirname, 'cmds');
 
-    // Load Events
     if (fs.existsSync(eventsDir)) {
         fs.readdirSync(eventsDir).forEach(file => {
             if (!file.endsWith('.js')) return;
             try {
                 const event = require(path.join(eventsDir, file));
                 if (event.name) global.events.set(event.name, event);
-            } catch (e) { console.error(`❌ Event Load Error: ${file}`); }
+            } catch (e) { console.error(`❌ Event Load Error (${file}):`, e.message); }
         });
     }
 
-    // Load Commands
     if (fs.existsSync(cmdsDir)) {
         fs.readdirSync(cmdsDir).forEach(file => {
             if (!file.endsWith('.js')) return;
@@ -185,7 +158,7 @@ function loadFiles() {
                     global.commands.set(cmd.name.toLowerCase(), cmd);
                     if (cmd.aliases) cmd.aliases.forEach(a => global.commands.set(a.toLowerCase(), cmd));
                 }
-            } catch (e) { console.error(`❌ Command Load Error: ${file}`); }
+            } catch (e) { console.error(`❌ Command Load Error (${file}):`, e.message); }
         });
     }
     console.log(`✅ Loaded ${global.commands.size} commands & ${global.events.size} events`);
@@ -203,6 +176,7 @@ async function startBot() {
 
     const appState = JSON.parse(fs.readFileSync(appStatePath, 'utf8'));
 
+    // Fix: Pass object { appState } directly
     login({ appState }, async (err, rawApi) => {
         if (err) {
             console.error("❌ LOGIN FAILED:", err);
@@ -225,43 +199,37 @@ async function startBot() {
         // Start Scheduler
         if (config.autoRestart) {
             try {
-                require('./custom')(config.ownerID, api, config);
+                // Ensure custom.js exists, or skip
+                if(fs.existsSync('./custom.js')) require('./custom')(config.ownerID, api, config);
             } catch(e) {}
         }
 
-        // Initialize Events
         global.events.forEach(event => {
             if (event.onStart) event.onStart(api);
         });
 
         console.log(`✅ BOT STARTED | SAFE MODE: ${config.safeMode ? "ACTIVE" : "OFF"}`);
 
-        // --- MESSAGE LISTENER ---
         api.listenMqtt(async (err, event) => {
             if (err) return console.error("Listener Error:", err);
 
-            // Handle Global Events
             if (global.events.has(event.type)) {
                 try { await global.events.get(event.type).execute({ api, event, config }); } catch(e){}
             }
 
             if (!event.body) return;
 
-            // 🛡️ ANTI-RAID PROTECTION
-            // If a group sends > 8 messages in 10 seconds, ignore it.
+            // Anti-Raid
             const now = Date.now();
             const threadData = threadRateLimit.get(event.threadID) || [];
             const recent = threadData.filter(t => now - t < 10000); 
-            
             if (recent.length > 8) {
-                // Determine if we should warn them (only warn once)
                 if (recent.length === 9) console.log(`🛡️ Rate limiting spam in thread: ${event.threadID}`);
                 return; 
             }
             recent.push(now);
             threadRateLimit.set(event.threadID, recent);
 
-            // Command Handling
             if (event.body.startsWith(config.prefix)) {
                 const args = event.body.slice(config.prefix.length).trim().split(/ +/);
                 const cmdName = args.shift().toLowerCase();
@@ -269,34 +237,22 @@ async function startBot() {
 
                 if (!cmd) return;
 
-                // Permissions
                 const isOwner = String(event.senderID) === String(config.ownerID);
                 const isAdmin = config.admin.includes(String(event.senderID));
                 
                 if (cmd.admin && !isOwner && !isAdmin) {
-                    // In safe mode, just react, don't reply to save API calls
                     return api.setMessageReaction("🔒", event.messageID, () => {}, true);
                 }
 
-                // Cooldown
                 const cdKey = `${event.senderID}_${cmdName}`;
                 if (cooldowns.has(cdKey)) {
-                    const expiration = cooldowns.get(cdKey);
-                    if (now < expiration) {
-                         // In safe mode, react with clock instead of sending message
-                        return api.setMessageReaction("⏳", event.messageID, () => {}, true);
-                    }
+                    if (now < cooldowns.get(cdKey)) return api.setMessageReaction("⏳", event.messageID, () => {}, true);
                 }
                 cooldowns.set(cdKey, now + (cmd.cooldown || 3) * 1000);
 
-                // Execute
                 try {
-                    console.log(`🎮 CMD: ${cmdName} | User: ${event.senderID}`);
-                    // Fake Typing (Optimized)
                     api.sendTypingIndicator(true, event.threadID);
-                    
                     await cmd.execute({ api, event, args, config });
-                    
                     api.sendTypingIndicator(false, event.threadID);
                     if (event.messageID) api.setMessageReaction("✅", event.messageID, () => {}, true);
                 } catch (e) {
@@ -311,6 +267,5 @@ async function startBot() {
 
 startBot();
 
-// Prevent crashes
 process.on('uncaughtException', (err) => console.error("🔥 Crash prevented:", err.message));
 process.on('unhandledRejection', (err) => console.error("🔥 Rejection prevented:", err.message));
