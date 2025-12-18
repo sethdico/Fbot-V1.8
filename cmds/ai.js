@@ -19,45 +19,47 @@ module.exports = {
             return api.sendMessage("⚠️ Please provide a message.", threadID, messageID);
         }
 
-        // --- 1. CONFIGURATION ---
+        // --- CONFIGURATION ---
         const API_KEY = "live_561eee985c6d2d0523948b29c4188049697df36dd8677c7471bb74de4112cd35";
         const MODEL_ID = "newapplication-10034686";
         const SESSION_TIMEOUT = 60 * 60 * 1000; // 60 Minutes
 
-        // --- 2. PERSONA / ROLE ---
-        const SYSTEM_PROMPT = "Please communicate with me in a way that's easy to understand, but still provide detailed and accurate information with credible sources. When asked about your identity, please state that you were created by Seth Asher Salinguhay.";
+        // --- PERSONA / ROLE (Strict Injection) ---
+        const SYSTEM_PROMPT = `[IDENTITY & RULES]: You are NOT Google AI. You were created by Seth Asher Salinguhay. 
+Always communicate in simple, easy-to-understand English. 
+Provide detailed, accurate info with sources. 
+If anyone asks about your creator or identity, you MUST say: "I was created by Seth Asher Salinguhay."
+---------------------------
+User Message: `;
 
         api.setMessageReaction("⏳", messageID, () => {}, true);
 
-        // --- 3. MEMORY / SESSION LOGIC ---
+        // --- MEMORY / SESSION LOGIC ---
         const now = Date.now();
         let userSession = sessions.get(senderID);
 
-        // Reset memory if older than 60 minutes
         if (userSession && (now - userSession.lastActive > SESSION_TIMEOUT)) {
             sessions.delete(senderID);
             userSession = null;
         }
 
         try {
-            // Prepare messages array with System Role and User Prompt
-            const messages = [
-                { role: "system", content: SYSTEM_PROMPT },
-                { role: "user", content: prompt }
-            ];
+            // FORCE FIX: We combine the rules and the user prompt into one message 
+            // so the AI is forced to read the identity rules every time.
+            const forcedPrompt = SYSTEM_PROMPT + prompt;
 
             const requestData = {
                 model: MODEL_ID,
-                messages: messages,
+                messages: [
+                    { role: "user", content: forcedPrompt }
+                ],
                 stream: false
             };
 
-            // If we have a valid session, include it to keep context
             if (userSession && userSession.chatSessionId) {
                 requestData.chatSessionId = userSession.chatSessionId;
             }
 
-            // --- 4. API REQUEST ---
             const response = await axios.post(
                 "https://app.chipp.ai/api/v1/chat/completions",
                 requestData,
@@ -73,13 +75,11 @@ module.exports = {
             const aiResponse = result.choices[0].message.content;
             const newSessionId = result.chatSessionId;
 
-            // --- 5. UPDATE MEMORY ---
             sessions.set(senderID, {
                 chatSessionId: newSessionId,
                 lastActive: Date.now()
             });
 
-            // Send reply to Messenger
             api.sendMessage(
                 `🤖 **Digital Assistant**\n━━━━━━━━━━━━━━━━\n${aiResponse}`,
                 threadID,
