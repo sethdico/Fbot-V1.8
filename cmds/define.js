@@ -4,9 +4,9 @@ const path = require("path");
 
 module.exports = {
     name: "define",
-    aliases: ["dict", "dictionary", "word"],
+    aliases: ["dict", "dictionary", "word", "meaning"],
     usePrefix: false,
-    description: "Look up a word in the professional dictionary.",
+    description: "Look up a word in the professional dictionary with audio support.",
     usage: "define <word>",
     cooldown: 5,
 
@@ -18,48 +18,87 @@ module.exports = {
 
         api.setMessageReaction("📖", messageID, () => {}, true);
 
-        try {
-            const res = await axios.get(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
-            const data = res.data[0];
-
-            let msg = `📖 **DICTIONARY: ${word.toUpperCase()}**\n`;
-            msg += `━━━━━━━━━━━━━━━━━━\n`;
-            if (data.phonetic) msg += `🗣️ Pronunciation: ${data.phonetic}\n\n`;
-
-            // Limit to top 2 meanings to keep it readable on mobile
-            data.meanings.slice(0, 2).forEach((m, i) => {
-                msg += `🔹 [${m.partOfSpeech.toUpperCase()}]\n`;
-                msg += `→ ${m.definitions[0].definition}\n`;
-                if (m.definitions[0].example) {
-                    msg += `📝 *Ex: "${m.definitions[0].example}"*\n`;
+        // --- THE DUAL-ENGINE LOGIC ---
+        const getDefinition = async (query) => {
+            // Source 1: DictionaryAPI.dev (Detailed)
+            try {
+                const res = await axios.get(`https://api.dictionaryapi.dev/api/v2/entries/en/${query}`, { timeout: 5000 });
+                const data = res.data[0];
+                return {
+                    word: data.word,
+                    phonetic: data.phonetic || "",
+                    meanings: data.meanings.slice(0, 2).map(m => ({
+                        pos: m.partOfSpeech,
+                        definition: m.definitions[0].definition,
+                        example: m.definitions[0].example || ""
+                    })),
+                    audio: data.phonetics.find(p => p.audio !== "")?.audio || null,
+                    source: "Source Alpha"
+                };
+            } catch (err) {
+                // Source 2: FreeDictionaryAPI.com (Reliable Fallback)
+                try {
+                    const res = await axios.get(`https://freedictionaryapi.com/api/v1/entries/en/${query}`, { timeout: 5000 });
+                    const data = res.data;
+                    const entry = data.entries[0];
+                    return {
+                        word: data.word,
+                        phonetic: entry.pronunciations?.[0]?.text || "",
+                        meanings: data.entries.slice(0, 2).map(e => ({
+                            pos: e.partOfSpeech,
+                            definition: e.senses[0].definition,
+                            example: e.senses[0].examples?.[0] || ""
+                        })),
+                        audio: null,
+                        source: "Source Beta"
+                    };
+                } catch (err2) {
+                    throw new Error("Word not found in any database.");
                 }
+            }
+        };
+
+        try {
+            const result = await getDefinition(word);
+
+            let msg = `📖 **DICTIONARY: ${result.word.toUpperCase()}**\n`;
+            msg += `━━━━━━━━━━━━━━━━━━\n`;
+            if (result.phonetic) msg += `🗣️ Pronunciation: ${result.phonetic}\n\n`;
+
+            result.meanings.forEach((m, i) => {
+                msg += `🔹 [${m.pos.toUpperCase()}]\n`;
+                msg += `→ ${m.definition}\n`;
+                if (m.example) msg += `📝 *Ex: "${m.example}"*\n`;
                 msg += `\n`;
             });
 
-            // Handle Audio Pronunciation
-            const audioObj = data.phonetics.find(p => p.audio !== "");
-            if (audioObj) {
-                const audioPath = path.resolve(__dirname, "../cache", `voice_${messageID}.mp3`);
-                const response = await axios({
-                    method: 'GET',
-                    url: audioObj.audio,
-                    responseType: 'stream'
-                });
-                
-                const writer = fs.createWriteStream(audioPath);
-                response.data.pipe(writer);
+            msg += `📍 ${result.source}`;
 
-                writer.on('finish', () => {
-                    api.sendMessage({ body: msg, attachment: fs.createReadStream(audioPath) }, threadID, () => {
-                        fs.unlinkSync(audioPath);
-                    }, messageID);
-                });
+            // Handle Audio if available
+            if (result.audio) {
+                const audioPath = path.resolve(__dirname, "../cache", `voice_${messageID}.mp3`);
+                try {
+                    const audioRes = await axios({ method: 'GET', url: result.audio, responseType: 'stream' });
+                    const writer = fs.createWriteStream(audioPath);
+                    audioRes.data.pipe(writer);
+
+                    writer.on('finish', () => {
+                        api.sendMessage({ body: msg, attachment: fs.createReadStream(audioPath) }, threadID, () => {
+                            if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
+                        }, messageID);
+                    });
+                } catch (audioErr) {
+                    api.sendMessage(msg, threadID, messageID);
+                }
             } else {
                 api.sendMessage(msg, threadID, messageID);
             }
 
+            api.setMessageReaction("✅", messageID, () => {}, true);
+
         } catch (e) {
-            api.sendMessage(`❌ Could not find definition for "${word}".`, threadID, messageID);
+            api.sendMessage(`❌ Word "${word}" not found. Try another word.`, threadID, messageID);
+            api.setMessageReaction("❓", messageID, () => {}, true);
         }
     }
 };
