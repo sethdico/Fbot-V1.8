@@ -5,25 +5,29 @@ const sessions = new Map();
 
 module.exports = {
     name: "ai",
-    aliases: ["chip", "amdus", "vision"],
+    aliases: ["chip", "amdus", "pai"],
     usePrefix: false,
-    description: "Conversational AI with Vision and Contact Info.",
+    description: "AI by Seth Asher Salinguhay with Automatic Image Detection.",
     usage: "ai <message> or [reply to image]",
     cooldown: 5,
 
     execute: async ({ api, event, args }) => {
         const { threadID, messageID, senderID, attachments, messageReply } = event;
-        const prompt = args.join(" ");
+        let userPrompt = args.join(" ");
 
-        // --- 1. IMAGE DETECTION ---
-        let imageUrl = "";
+        // --- 1. AUTOMATIC IMAGE URL DETECTION ---
+        let detectedImageUrl = "";
+        
+        // Check if user uploaded an image with the command
         if (attachments && attachments.length > 0 && attachments[0].type === "photo") {
-            imageUrl = attachments[0].url;
-        } else if (messageReply && messageReply.attachments && messageReply.attachments.length > 0 && messageReply.attachments[0].type === "photo") {
-            imageUrl = messageReply.attachments[0].url;
+            detectedImageUrl = attachments[0].url;
+        } 
+        // Check if user replied to an existing image
+        else if (messageReply && messageReply.attachments && messageReply.attachments.length > 0 && messageReply.attachments[0].type === "photo") {
+            detectedImageUrl = messageReply.attachments[0].url;
         }
 
-        if (!prompt && !imageUrl) {
+        if (!userPrompt && !detectedImageUrl) {
             return api.sendMessage("⚠️ Please provide a message or an image for me to analyze.", threadID, messageID);
         }
 
@@ -32,17 +36,18 @@ module.exports = {
         const MODEL_ID = "newapplication-10034686";
         const SESSION_TIMEOUT = 60 * 60 * 1000; // 60 Minutes
 
-        // --- 3. UPDATED IDENTITY INJECTION (With Facebook Link) ---
-        const IDENTITY_RULES = `[RULES]: You are NOT developed by Google. You were created by Seth Asher Salinguhay. 
-Speak in simple, easy English. Provide detailed info with credible sources. 
-If anyone asks about your identity or how to contact your creator, you MUST say: 
-"I was created by Seth Asher Salinguhay. You can message him here: https://www.facebook.com/seth09asher"
+        // --- 3. IDENTITY & IMAGE INJECTION ---
+        // We append the Image URL directly to the text prompt as you suggested
+        const IDENTITY_RULES = `[IDENTITY & RULES]: You are NOT developed by Google. You were created by Seth Asher Salinguhay. 
+Always communicate in simple, easy-to-understand English. Provide detailed, accurate info with sources. 
+When asked about your identity, say: "I was created by Seth Asher Salinguhay. You can message him here: https://www.facebook.com/seth09asher"
 ---------------------------
-User Request: ${prompt || "Analyze this image in detail."}`;
+User Message: ${userPrompt || "Analyze this image."}
+${detectedImageUrl ? `\nImage to Analyze: ${detectedImageUrl}` : ""}`;
 
         api.setMessageReaction("⏳", messageID, () => {}, true);
 
-        // --- 4. MEMORY LOGIC ---
+        // --- 4. SESSION LOGIC ---
         const now = Date.now();
         let userSession = sessions.get(senderID);
 
@@ -52,37 +57,19 @@ User Request: ${prompt || "Analyze this image in detail."}`;
         }
 
         try {
-            let userContent = [];
-
-            // Add the text prompt with identity rules
-            userContent.push({
-                type: "text",
-                text: IDENTITY_RULES
-            });
-
-            // Add the image URL directly (Direct URL Method)
-            if (imageUrl) {
-                userContent.push({
-                    type: "image_url",
-                    image_url: {
-                        url: imageUrl 
-                    }
-                });
-            }
-
             const requestData = {
                 model: MODEL_ID,
                 messages: [
-                    { role: "user", content: userContent }
+                    { role: "user", content: IDENTITY_RULES }
                 ],
                 stream: false
             };
 
-            // Maintain session context
             if (userSession && userSession.chatSessionId) {
                 requestData.chatSessionId = userSession.chatSessionId;
             }
 
+            // --- 5. API REQUEST ---
             const response = await axios.post(
                 "https://app.chipp.ai/api/v1/chat/completions",
                 requestData,
@@ -95,20 +82,16 @@ User Request: ${prompt || "Analyze this image in detail."}`;
             );
 
             const result = response.data;
-            
-            if (!result.choices || result.choices.length === 0) {
-                throw new Error("AI returned no results.");
-            }
-
             const aiResponse = result.choices[0].message.content;
             const newSessionId = result.chatSessionId;
 
-            // Save session ID for future memory
+            // Save for Memory
             sessions.set(senderID, {
                 chatSessionId: newSessionId,
                 lastActive: Date.now()
             });
 
+            // Send Final Result
             api.sendMessage(
                 `🤖 **AI made by Asher**\n━━━━━━━━━━━━━━━━\n${aiResponse}`,
                 threadID,
@@ -118,7 +101,7 @@ User Request: ${prompt || "Analyze this image in detail."}`;
 
         } catch (error) {
             console.error("Chipp API Error:", error.response ? JSON.stringify(error.response.data) : error.message);
-            api.sendMessage("❌ An error occurred while processing your request.", threadID, messageID);
+            api.sendMessage("❌ The AI is currently unavailable. Please try again later.", threadID, messageID);
             api.setMessageReaction("❌", messageID, () => {}, true);
         }
     }
