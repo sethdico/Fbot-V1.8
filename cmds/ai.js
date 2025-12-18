@@ -9,8 +9,8 @@ module.exports = {
     name: "ai",
     aliases: ["chip", "amdus", "pai"],
     usePrefix: false,
-    description: "Multi-functional AI by Seth Asher Salinguhay.",
-    usage: "ai <message>",
+    description: "Multi-functional AI by Seth Asher Salinguhay. Image recognition/generation/edit, real-time information and sends files such as documents.",
+    usage: "ai <message> / ai <replytoimage>",
     cooldown: 5,
 
     execute: async ({ api, event, args }) => {
@@ -38,12 +38,12 @@ module.exports = {
         const IDENTITY_RULES = `[IDENTITY]: You are a powerful AI assistant created by Seth Asher Salinguhay. 
 [CAPABILITIES]: You support image recognition, image generation/editing, real-time information retrieval, and sending files like documents.
 [RULES]: Communicate in simple English. Provide detailed and accurate information. 
-When asked who made you, say: "I was created by Seth Asher Salinguhay. Message him here: https://www.facebook.com/seth09asher"
+When asked who made you, say: "I was created by Seth Asher Salinguhay. Message him here: https://www.facebook.com/seth09asher "
 ---------------------------
 User Request: ${userPrompt || "Analyze this image."}
 ${detectedImageUrl ? `\nImage to Analyze: ${detectedImageUrl}` : ""}`;
 
-        api.setMessageReaction("⏳", messageID, () => {}, true);
+        await api.setMessageReaction("⏳", messageID);
 
         // --- 4. SESSION LOGIC ---
         const now = Date.now();
@@ -60,7 +60,7 @@ ${detectedImageUrl ? `\nImage to Analyze: ${detectedImageUrl}` : ""}`;
                 stream: false
             };
 
-            if (userSession && userSession.chatSessionId) {
+            if (userSession?.chatSessionId) {
                 requestData.chatSessionId = userSession.chatSessionId;
             }
 
@@ -78,7 +78,13 @@ ${detectedImageUrl ? `\nImage to Analyze: ${detectedImageUrl}` : ""}`;
             sessions.set(senderID, { chatSessionId: newSessionId, lastActive: Date.now() });
 
             // Send text reply first
-            await api.sendMessage(`🤖 **AI Assistant**\n━━━━━━━━━━━━━━━━\n${aiTextResponse}`, threadID, messageID);
+            await api.sendMessage(
+                {
+                    body: `🤖 **AI Assistant**\n━━━━━━━━━━━━━━━━\n${aiTextResponse}`
+                },
+                threadID,
+                messageID // reply to original message
+            );
 
             // --- 6. ATTACHMENT SCRAPER ---
             const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -96,12 +102,24 @@ ${detectedImageUrl ? `\nImage to Analyze: ${detectedImageUrl}` : ""}`;
                         const res = await axios({ method: 'get', url: cleanUrl, responseType: 'stream' });
                         const writer = fs.createWriteStream(filePath);
                         res.data.pipe(writer);
-                        await new Promise((res, rej) => { writer.on('finish', res); writer.on('error', rej); });
-
-                        api.sendMessage({ body: "🖼️ Generated Image:", attachment: fs.createReadStream(filePath) }, threadID, () => {
-                            if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+                        await new Promise((resolve, reject) => {
+                            writer.on('finish', resolve);
+                            writer.on('error', reject);
                         });
-                    } catch (e) { console.error("Image Send Error"); }
+
+                        await api.sendMessage(
+                            {
+                                body: "🖼️ Generated Image:",
+                                attachment: fs.createReadStream(filePath)
+                            },
+                            threadID,
+                            messageID
+                        );
+                    } catch (e) {
+                        console.error("Image Send Error:", e);
+                    } finally {
+                        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+                    }
                 }
 
                 // Handle Documents/Files
@@ -114,20 +132,33 @@ ${detectedImageUrl ? `\nImage to Analyze: ${detectedImageUrl}` : ""}`;
                         const res = await axios({ method: 'get', url: cleanUrl, responseType: 'stream' });
                         const writer = fs.createWriteStream(filePath);
                         res.data.pipe(writer);
-                        await new Promise((res, rej) => { writer.on('finish', res); writer.on('error', rej); });
-
-                        api.sendMessage({ body: `📂 File: ${fileName}`, attachment: fs.createReadStream(filePath) }, threadID, () => {
-                            if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+                        await new Promise((resolve, reject) => {
+                            writer.on('finish', resolve);
+                            writer.on('error', reject);
                         });
-                    } catch (e) { console.error("File Send Error"); }
+
+                        await api.sendMessage(
+                            {
+                                body: `📂 File: ${fileName}`,
+                                attachment: fs.createReadStream(filePath)
+                            },
+                            threadID,
+                            messageID
+                        );
+                    } catch (e) {
+                        console.error("File Send Error:", e);
+                    } finally {
+                        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+                    }
                 }
             }
 
-            api.setMessageReaction("✅", messageID, () => {}, true);
+            await api.setMessageReaction("✅", messageID);
 
         } catch (error) {
-            api.sendMessage("❌ Service unavailable. Please try again later.", threadID, messageID);
-            api.setMessageReaction("❌", messageID, () => {}, true);
+            console.error("AI Command Error:", error?.response?.data || error.message || error);
+            await api.sendMessage("❌ Service unavailable. Please try again later.", threadID, messageID);
+            await api.setMessageReaction("❌", messageID);
         }
     }
 };
