@@ -8,7 +8,7 @@ module.exports = {
     name: "chipp",
     aliases: ["digital", "protege", "chip"],
     usePrefix: false,
-    description: "Chat with Digital Protégé with Memory Context (60m timeout).",
+    description: "Chat with Digital Protégé (Memory + Auto-Fix).",
     usage: "chipp <text> (reply to image or attach one)",
     cooldown: 5,
 
@@ -34,17 +34,14 @@ module.exports = {
         const SESSION_TIMEOUT = 60 * 60 * 1000; // 60 Minutes
         const currentTime = Date.now();
         let sessionData = userSessions.get(senderID);
-        let isNewSession = false;
 
-        // Check if session exists and is valid
+        // Check timeout
         if (sessionData) {
             if (currentTime - sessionData.lastActive > SESSION_TIMEOUT) {
-                // Session expired
-                sessionData = null;
-                api.sendMessage("⌛ Session expired. Starting new conversation...", threadID);
+                sessionData = null; // Expire session
+                api.sendMessage("⌛ Session expired. Generating new context...", threadID);
             } else {
-                // Update activity time
-                sessionData.lastActive = currentTime;
+                sessionData.lastActive = currentTime; // Refresh timer
                 userSessions.set(senderID, sessionData);
             }
         }
@@ -52,36 +49,52 @@ module.exports = {
         try {
             // --- STEP 1: GET OR CREATE SESSION ---
             if (!sessionData) {
-                isNewSession = true;
-                
-                // Rotating User Agents for initial connection
+                // Rotating User Agents
                 const userAgents = [
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15"
                 ];
                 const ua = userAgents[Math.floor(Math.random() * userAgents.length)];
                 const targetUrl = "https://digitalprotg-32922.chipp.ai/w/chat/";
 
-                // Scrape the main page to find the hidden Session ID
+                // 1. Fetch the HTML
                 const mainPage = await axios.get(targetUrl, {
-                    headers: { "User-Agent": ua }
+                    headers: { 
+                        "User-Agent": ua,
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                        "Accept-Language": "en-US,en;q=0.5"
+                    }
                 });
 
-                // Extract Session ID using Regex from Next.js hydration data
-                const sessionMatch = mainPage.data.match(/"chatSessionId","([a-f0-9-]+)","d"/);
-                if (!sessionMatch) throw new Error("Could not extract Session ID. Site structure changed.");
+                const html = mainPage.data;
+
+                // 2. ROBUST EXTRACTOR (Tries 3 different patterns)
+                // Pattern A: Standard Prop ["chatSessionId","UUID","d"]
+                let match = html.match(/\\"chatSessionId\\",\\"([a-f0-9-]{36})\\",\\"d\\"/);
+                
+                // Pattern B: Flight Data Path ["session","UUID"] (Often found in the big JSON blob)
+                if (!match) match = html.match(/"session","([a-f0-9-]{36})"/);
+                
+                // Pattern C: Unescaped Prop (Rare but possible)
+                if (!match) match = html.match(/"chatSessionId","([a-f0-9-]{36})","d"/);
+
+                if (!match || !match[1]) {
+                    // console.log(html); // Uncomment for debugging if it fails again
+                    throw new Error("Could not scrape Session ID. The site might be blocking the bot.");
+                }
+                
+                const newSessionId = match[1];
                 
                 // Store the new session
                 sessionData = {
-                    sessionId: sessionMatch[1],
+                    sessionId: newSessionId,
                     userAgent: ua,
                     lastActive: Date.now()
                 };
                 userSessions.set(senderID, sessionData);
             }
 
-            // --- STEP 2: PREPARE MESSAGE PAYLOAD ---
+            // --- STEP 2: PREPARE MESSAGE ---
             let messages = [];
             
             if (imageUrl) {
@@ -105,11 +118,11 @@ module.exports = {
             
             const response = await axios.post(apiUrl, {
                 messages: messages,
-                sessionId: sessionData.sessionId, // Use stored session ID
+                sessionId: sessionData.sessionId, 
                 appNameId: "digitalprotg-32922"
             }, {
                 headers: {
-                    "User-Agent": sessionData.userAgent, // Reuse same UA to look legit
+                    "User-Agent": sessionData.userAgent,
                     "Referer": "https://digitalprotg-32922.chipp.ai/w/chat/",
                     "Origin": "https://digitalprotg-32922.chipp.ai",
                     "Content-Type": "application/json"
@@ -117,28 +130,32 @@ module.exports = {
                 responseType: 'text'
             });
 
-            // --- STEP 4: PARSE STREAM ---
-            let rawText = response.data;
+            // --- STEP 4: CLEAN RESPONSE ---
+            const rawText = response.data;
             const cleanText = rawText
                 .split('\n')
                 .map(line => {
                     const match = line.match(/^\d+:"(.*)"$/);
-                    return match ? JSON.parse(`"${match[1]}"`) : ""; 
+                    // Handle escaped quotes in the JSON string
+                    if (match) {
+                        try {
+                            return JSON.parse(`"${match[1]}"`);
+                        } catch (e) { return ""; }
+                    }
+                    return ""; 
                 })
                 .join("");
 
             if (!cleanText) {
-                // If scraping fails on a reused session, force clear it so next try works
-                userSessions.delete(senderID);
-                throw new Error("Session invalid. Please try again (Session reset).");
+                userSessions.delete(senderID); // Reset on empty response
+                throw new Error("Empty response. Session might be invalid.");
             }
 
             api.sendMessage(`🤖 **Digital Protégé**\n━━━━━━━━━━━━━━━━\n${cleanText}`, threadID, messageID);
             api.setMessageReaction("✅", messageID, () => {}, true);
 
         } catch (e) {
-            // If error occurs, remove session to prevent getting stuck in a loop
-            userSessions.delete(senderID);
+            userSessions.delete(senderID); // Clear session on error to retry next time
             console.error("Chipp AI Error:", e.message);
             api.sendMessage(`❌ Error: ${e.message}`, threadID, messageID);
             api.setMessageReaction("❌", messageID, () => {}, true);
