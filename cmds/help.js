@@ -1,143 +1,84 @@
 module.exports = {
     name: "help",
-    aliases: ["commands", "menu", "h"],
+    aliases: ["h", "menu"],
     usePrefix: false,
     admin: false,
     cooldown: 3,
-    version: "9.0",
-    usage: "help [command] | help all | help category <name>",
-    description: "Shows command list, details, or categories.",
-    
+    description: "View the command list and categories.",
+    usage: "help [command] | help all | help [category]",
+
     execute({ api, event, args }) {
         const { threadID, messageID } = event;
-        const botPrefix = global.config?.prefix || "/";
+        const prefix = global.config?.prefix || "/";
 
-        // Convert Map to Array
-        const commandsArray = Array.from(global.commands.values());
-        const uniqueCommands = [...new Map(commandsArray.map(cmd => [cmd.name, cmd])).values()];
-        
-        // Helper: Format command display
-        const formatCommand = (cmd) => {
-            const adminTag = cmd.admin ? " 👑" : "";
-            const cooldownTag = cmd.cooldown ? ` ⏱️${cmd.cooldown}s` : "";
-            const desc = cmd.description ? cmd.description : "No description available";
-            const shortDesc = desc.length > 50 ? desc.substring(0, 47) + "..." : desc;
-            return `🔹 ${botPrefix}${cmd.name}${adminTag}${cooldownTag}\n   → ${shortDesc}`;
+        const cmds = Array.from(global.commands.values());
+        // Filter unique commands to avoid listing aliases
+        const uniqueCmds = [...new Map(cmds.map(c => [c.name, c])).values()];
+
+        // 1. DETAIL VIEW (Usage: /help ai)
+        if (args.length > 0 && !["all", "ai", "fun", "info", "tools", "admin", "group"].includes(args[0].toLowerCase())) {
+            const query = args[0].toLowerCase();
+            const cmd = global.commands.get(query);
+
+            if (!cmd) return api.sendMessage(`❌ Command "${query}" not found.`, threadID, messageID);
+
+            return api.sendMessage(
+                `📖 **COMMAND INFO: ${cmd.name.toUpperCase()}**\n` +
+                `━━━━━━━━━━━━━━━━━━\n` +
+                `📝 **Desc:** ${cmd.description || "No description"}\n` +
+                `⌨️ **Usage:** ${cmd.usage || prefix + cmd.name}\n` +
+                `⏱️ **Wait:** ${cmd.cooldown || 0}s\n` +
+                `👑 **Admin:** ${cmd.admin ? "Yes" : "No"}\n` +
+                `🔗 **Aliases:** ${cmd.aliases ? cmd.aliases.join(", ") : "None"}`,
+                threadID, messageID
+            );
+        }
+
+        // 2. CATEGORIES LOGIC
+        const categories = {
+            "🤖 AI": ["ai", "aria", "copilot", "deepimg", "gemini", "gptnano", "quillbot", "venice", "webpilot", "xdash", "you"],
+            "🎮 FUN": ["48laws", "8ball", "bible", "pair"],
+            "🌍 INFO": ["define", "translate", "wiki", "stalk", "friendlist", "uid", "avatar", "pfp", "gcinfo"],
+            "⚡ TOOLS": ["remind", "uptime", "debug", "unsend", "loc", "say"],
+            "🔄 GROUP": ["theme", "nickname", "pin", "promote", "rename", "setemoji", "tagall", "kick", "leave"],
+            "👑 ADMIN": ["accept", "add", "addfriend", "inbox", "logout", "note", "notify", "pending", "pm", "restart", "story", "token", "welcome", "api_debug"]
         };
 
-        // 1. HELP FOR SPECIFIC COMMAND
-        if (args.length > 0 && args[0].toLowerCase() !== "all" && args[0].toLowerCase() !== "category") {
-            const cmdName = args[0].toLowerCase();
-            const cmd = global.commands.get(cmdName);
-            if (!cmd) {
-                return api.sendMessage(`❌ Command "${cmdName}" not found.`, threadID, messageID);
-            }
-            
-            const aliases = cmd.aliases && cmd.aliases.length > 0 ? cmd.aliases.join(", ") : "None";
-            const usage = cmd.usage || `${botPrefix}${cmd.name}`;
-            const admin = cmd.admin ? "✅ Yes" : "❌ No";
-            
-            const helpMsg = `
-╔═════════════════════════╗
-        📖 COMMAND INFO
-╚═════════════════════════╝
-🔹 **Name:** ${cmd.name}
-📝 **Description:** ${cmd.description || "No description"}
-⌨️ **Usage:** ${usage}
-🔗 **Aliases:** ${aliases}
-⏱️ **Cooldown:** ${cmd.cooldown || 0}s
-👑 **Admin Only:** ${admin}
-            `;
-            return api.sendMessage(helpMsg, threadID, messageID);
-        }
-
-        // 2. HELP ALL COMMANDS
+        // 3. SHOW ALL VIEW (Usage: /help all)
         if (args[0]?.toLowerCase() === "all") {
-            const allCmds = uniqueCommands.sort((a, b) => a.name.localeCompare(b.name));
-            let msg = `╔═════════════════════════╗
-     📋 ALL COMMANDS (${allCmds.length})
-╚═════════════════════════╝\n`;
-            allCmds.forEach(cmd => msg += `${formatCommand(cmd)}\n`);
-            return api.sendMessage(msg, threadID, messageID);
+            let allMsg = `📜 **FULL COMMAND LIST (${uniqueCmds.length})**\n\n`;
+            uniqueCmds.sort((a, b) => a.name.localeCompare(b.name)).forEach(c => {
+                allMsg += `• ${prefix}${c.name}${c.admin ? " 👑" : ""}\n`;
+            });
+            allMsg += `\n💡 Type ${prefix}help <name> for details.`;
+            return api.sendMessage(allMsg, threadID, messageID);
         }
 
-        // 3. CATEGORIZED MENU
-        const categories = getCategories();
-        
-        // If user asks for specific category
-        if (args[0]?.toLowerCase() === "category") {
-            const catInput = args[1]?.toLowerCase();
-            const catName = Object.keys(categories).find(c => c.toLowerCase().includes(catInput));
-            
-            if (!catName) return api.sendMessage("❌ Category not found.", threadID);
-
-            const cmdsInCat = categories[catName];
-            let catMsg = `╔═════════════════════════╗
-   🗂️ ${catName.toUpperCase()}
-╚═════════════════════════╝\n`;
-            
-            let foundAny = false;
-            cmdsInCat.forEach(name => {
-                const cmd = global.commands.get(name);
-                if (cmd) {
-                    catMsg += `${formatCommand(cmd)}\n`;
-                    foundAny = true;
-                }
+        // 4. CATEGORY DETAIL VIEW (Usage: /help ai)
+        const requestedCat = Object.keys(categories).find(k => k.toLowerCase().includes(args[0]?.toLowerCase()));
+        if (requestedCat) {
+            let catMsg = `${requestedCat} **COMMANDS**\n━━━━━━━━━━━━━━━━━━\n`;
+            categories[requestedCat].forEach(name => {
+                const c = global.commands.get(name);
+                if (c) catMsg += `🔹 ${prefix}${c.name}\n`;
             });
-            
-            if (!foundAny) return api.sendMessage("❌ No commands loaded in this category.", threadID);
             return api.sendMessage(catMsg, threadID, messageID);
         }
 
-        // Default Main Menu
-        let msg = `╔═════════════════════════╗
-       🤖 FBOT V1.8 HELP
-╚═════════════════════════╝
-👋 Hello! I am online and ready.
-
-`;
+        // 5. DEFAULT MENU (Usage: /help)
+        let menuMsg = `╔═════════════════╗\n    🤖 **SYSTEM MENU**\n╚═════════════════╝\n`;
+        menuMsg += `👋 Hello! I have **${uniqueCmds.length}** commands.\n\n`;
         
-        Object.entries(categories).forEach(([category, cmdNames], index) => {
-            // Count only commands that are actually loaded in memory
-            const activeCount = cmdNames.filter(name => global.commands.has(name)).length;
-            if (activeCount === 0) return; // Skip empty categories
-
-            const emoji = ["🤖", "🎮", "🌍", "⚡", "👑", "🔄", "📱"][index % 7] || "📁";
-            msg += `${emoji} **${category}** (${activeCount})\n`;
+        Object.entries(categories).forEach(([name, list]) => {
+            const count = list.filter(n => global.commands.has(n)).length;
+            if (count > 0) menuMsg += `${name} (${count} cmds)\n`;
         });
-        
-        msg += `\n🔍 Type \`${botPrefix}help all\` for the full list.\n💡 Type \`${botPrefix}help <command>\` for details.`;
-        
-        return api.sendMessage(msg, threadID, messageID);
+
+        menuMsg += `\n━━━━━━━━━━━━━━━━━━\n`;
+        menuMsg += `🔍 **View Category:** \`${prefix}help <category_name>\`\n`;
+        menuMsg += `📜 **View All:** \`${prefix}help all\`\n`;
+        menuMsg += `💡 **Command Details:** \`${prefix}help <command>\``;
+
+        return api.sendMessage(menuMsg, threadID, messageID);
     }
 };
-
-// 🔹 EXACT LIST FROM YOUR FILES
-// I included both filename variations (e.g. 'trans' vs 'translate') to be safe.
-function getCategories() {
-    return {
-        "🤖 AI & Smart Tools": [
-            "ai", "aria", "copilot", "deepimg", "gemini", "gptnano",
-            "quillbot", "venice", "webpilot", "xdash", "you"
-        ],
-        "🎮 Entertainment": [
-            "48laws", "8ball", "bible", "pair", "say"
-        ],
-        "🌍 Language & Info": [
-            "dict", "define", "trans", "translate", "wiki", "stalk", "gcinfo",
-            "inbox", "friendlist", "pending", "uid", "avatar", "pfp"
-        ],
-        "⚡ Utilities": [
-            "remind", "uptime", "debug", "unsend", "loc", "spam"
-        ],
-        "👑 Admin & System": [
-            "add", "kick", "leave", "notif", "notify", "welcome", "cmd",
-            "api_debug", "restart", "logout", "notes", "note", "story",
-            "accept", "addfriend", "token", "pm"
-        ],
-        "🔄 Group Management": [
-            "theme", "nickname", "pin", "promote", "rename",
-            "setemoji", "tagall"
-        ]
-    };
-}
