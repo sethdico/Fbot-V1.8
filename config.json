@@ -3,11 +3,13 @@
   "ownerID": "100093157180148",
   "admin": [
     "100093157180148",
-    "100088591459924",
-    "100091821387087"
+    "100088591459924"
   ],
   "botName": "amadeus",
   "autoRestart": true,
+  "safeMode": true,
+  "messageDelay": 2000,
   "aiApiKey": "Koja",
-  "xdashApiKey": "3884224f549d964644816c61b1b65d84"
+  "xdashApiKey": "3884224f549d964644816c61b1b65d84",
+  "chippApiKey": "live_561eee985c6d2d0523948b29c4188049697df36dd8677c7471bb74de4112cd35"
 }
