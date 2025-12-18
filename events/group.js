@@ -7,16 +7,14 @@ module.exports = {
     async execute({ api, event }) {
         const { logMessageType, logMessageData, threadID } = event;
 
-        // 1. Safe Settings Load (Prevents crashes if file missing)
+        // Safe Settings Load
         let settings = { welcome: true };
         try {
             const settingsPath = path.resolve(__dirname, "..", "settings.json");
             if (fs.existsSync(settingsPath)) {
                 settings = JSON.parse(fs.readFileSync(settingsPath));
             }
-        } catch (e) {
-            // Defaults to true if error
-        }
+        } catch (e) {}
 
         if (!settings.welcome) return;
 
@@ -40,7 +38,6 @@ module.exports = {
                     await api.sendMessage(msg, threadID);
                 }
             } 
-            
             // GOODBYE MESSAGE
             else if (logMessageType === "log:unsubscribe") {
                 const leftUserID = logMessageData.leftParticipantFbId;
