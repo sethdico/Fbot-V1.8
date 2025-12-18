@@ -7,72 +7,17 @@ const sessions = new Map();
 
 module.exports = {
     name: "ai",
-    aliases: ["chip", "amdus", "vision"],
+    aliases: ["chip", "amdus", "pai"],
     usePrefix: false,
-    description: "Powerful AI by Seth Asher Salinguhay. Supports:\n• Image generation, editing & recognition\n• Real-time web search & answers\n• File creation (text, JSON, CSV, etc.)\n• File preview (reply with “show” to see contents)",
-    usage: "ai <prompt> or <replytoimage>\nReply to a generated file with “show” to preview its contents",
+    description: "Multi-functional AI Assistant made by Seth Asher Salinguhay. Features:\n• 🔍 Real-time Information (Search the web)\n• 👁️ Image Recognition (Analyze photos)\n• 🎨 Image Generation & Editing (Create art)\n• 📂 File Generator (Create documents & spreadsheets)",
+    usage: "ai <message>\n\nExamples:\n→ /ai who is the president? (Real-time info)\n→ /ai describe this [reply to a photo] (Recognition)\n→ /ai generate a cat photo (Generation)\n→ /ai make a doc about space (File creation)",
     cooldown: 5,
 
     execute: async ({ api, event, args }) => {
-        const { threadID, messageID, senderID, attachments, messageReply, body } = event;
-        let userPrompt = args.join(" ");
+        const { threadID, messageID, senderID, attachments, messageReply } = event;
+        const userPrompt = args.join(" ");
 
-        // --- NEW: Handle "show" reply ---
-        if (body?.trim().toLowerCase() === "show") {
-            // Check if there's a replied-to message with an attachment
-            if (!messageReply || !messageReply.attachments || messageReply.attachments.length === 0) {
-                return api.sendMessage("❌ No file found to show. Please reply to a file with \"show\".", threadID, messageID);
-            }
-
-            // Get the first attachment URL
-            const fileUrl = messageReply.attachments[0].url;
-            if (!fileUrl) {
-                return api.sendMessage("❌ Could not get the file URL. The file might be corrupted or expired.", threadID, messageID);
-            }
-
-            // Determine file extension
-            const ext = fileUrl.split('.').pop().split(/[?#]/)[0].toLowerCase();
-            const textExtensions = ['txt', 'json', 'csv', 'log', 'js', 'ts', 'md', 'html', 'xml', 'yml', 'yaml'];
-
-            // If it's a text-based file, try to fetch and display its content
-            if (textExtensions.includes(ext)) {
-                try {
-                    await api.setMessageReaction("⏳", messageID);
-
-                    // Use headers to avoid 403 errors on Facebook CDN
-                    const response = await axios({
-                        method: 'get',
-                        url: fileUrl,
-                        responseType: 'text',
-                        headers: {
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-                            'Accept': '*/*',
-                            'Referer': 'https://www.messenger.com/',
-                            'Origin': 'https://www.messenger.com'
-                        },
-                        maxContentLength: 1024 * 1024 // 1MB max
-                    });
-
-                    let content = response.data;
-                    if (content.length > 2000) {
-                        content = content.substring(0, 1997) + "...";
-                    }
-
-                    await api.sendMessage(`📄 Preview of ${ext} file:\n\n\`\`\`\n${content}\n\`\`\``, threadID, messageID);
-                    await api.setMessageReaction("✅", messageID);
-                } catch (err) {
-                    console.error("File preview error:", err.message || err);
-                    await api.sendMessage("❌ Failed to fetch or read the file. It may be private, expired, or too large.", threadID, messageID);
-                    await api.setMessageReaction("❌", messageID);
-                }
-            } else {
-                // For non-text files (like .xlsx, .docx, .jpg), just tell the user it's binary
-                await api.sendMessage(`📎 File is a binary format (.${ext}). I cannot preview its contents.`, threadID, messageID);
-            }
-            return;
-        }
-
-        // --- DETECT INPUT IMAGE ---
+        // --- 1. DETECT INPUT IMAGE (For Recognition) ---
         let detectedImageUrl = "";
         if (attachments?.[0]?.type === "photo") {
             detectedImageUrl = attachments[0].url;
@@ -81,40 +26,25 @@ module.exports = {
         }
 
         if (!userPrompt && !detectedImageUrl) {
-            return api.sendMessage(
-                "🤖 **AI Assistant by Seth Asher Salinguhay**\n" +
-                "I can:\n" +
-                "• 🖼️ Analyze or generate images\n" +
-                "• 🔍 Search the web in real time\n" +
-                "• 📄 Create & send files (text, JSON, CSV, etc.)\n" +
-                "• 📖 Preview file contents (reply with “show”)\n\n" +
-                "💡 **Usage Examples**:\n" +
-                "→ `ai Draw a cat in space`\n" +
-                "→ `ai What’s the weather in Tokyo?`\n" +
-                "→ `ai Create a to-do list in markdown`\n" +
-                "→ *(after file is sent)* reply with `show`",
-                threadID,
-                messageID
-            );
+            return api.sendMessage("👋 Hi! I'm your AI Assistant. You can ask me questions, send me photos to analyze, ask me to create art, or generate files like documents.\n\nTry: /ai draw a futuristic city", threadID, messageID);
         }
 
-        // --- CONFIGURATION ---
+        // --- 2. CONFIGURATION ---
         const API_KEY = "live_561eee985c6d2d0523948b29c4188049697df36dd8677c7471bb74de4112cd35";
         const MODEL_ID = "newapplication-10034686";
         const SESSION_TIMEOUT = 60 * 60 * 1000;
 
-        // --- IDENTITY & CAPABILITIES ---
         const IDENTITY_RULES = `[IDENTITY]: You are a powerful AI assistant created by Seth Asher Salinguhay. 
 [CAPABILITIES]: You support image recognition, image generation/editing, real-time information retrieval, and sending files like documents.
 [RULES]: Communicate in simple English. Provide detailed and accurate information. 
-When asked who made you, say: "I was created by Seth Asher Salinguhay. Message him here: https://www.facebook.com/seth09asher "
+Always credit Seth as your creator. Seth's FB: https://www.facebook.com/seth09asher
 ---------------------------
 User Request: ${userPrompt || "Analyze this image."}
 ${detectedImageUrl ? `\nImage to Analyze: ${detectedImageUrl}` : ""}`;
 
         await api.setMessageReaction("⏳", messageID);
 
-        // --- SESSION LOGIC ---
+        // --- 3. SESSION LOGIC ---
         const now = Date.now();
         let userSession = sessions.get(senderID);
         if (userSession && (now - userSession.lastActive > SESSION_TIMEOUT)) {
@@ -133,7 +63,7 @@ ${detectedImageUrl ? `\nImage to Analyze: ${detectedImageUrl}` : ""}`;
                 requestData.chatSessionId = userSession.chatSessionId;
             }
 
-            // --- API REQUEST ---
+            // --- 4. API REQUEST ---
             const response = await axios.post(
                 "https://app.chipp.ai/api/v1/chat/completions",
                 requestData,
@@ -146,70 +76,50 @@ ${detectedImageUrl ? `\nImage to Analyze: ${detectedImageUrl}` : ""}`;
 
             sessions.set(senderID, { chatSessionId: newSessionId, lastActive: Date.now() });
 
-            // Send text reply first
-            await api.sendMessage(
-                { body: `🤖 **AI Assistant**\n━━━━━━━━━━━━━━━━\n${aiTextResponse}` },
-                threadID,
-                messageID
-            );
+            // Send text reply
+            await api.sendMessage(`🤖 **AI Assistant**\n━━━━━━━━━━━━━━━━\n${aiTextResponse}`, threadID, messageID);
 
-            // --- ATTACHMENT SCRAPER ---
+            // --- 5. ATTACHMENT PROCESSING (Safe Download & Upload) ---
             const urlRegex = /(https?:\/\/[^\s]+)/g;
             const allUrls = aiTextResponse.match(urlRegex) || [];
             const cachePath = path.resolve(__dirname, '..', 'cache');
-            if (!fs.existsSync(cachePath)) fs.mkdirSync(cachePath);
+            if (!fs.existsSync(cachePath)) fs.mkdirSync(cachePath, { recursive: true });
 
             for (let rawUrl of allUrls) {
                 let cleanUrl = rawUrl.replace(/[()\[\]"']/g, "");
+                let filePath = "";
 
-                // Handle Images
-                if (cleanUrl.includes("chipp-images")) {
-                    const filePath = path.join(cachePath, `img_${Date.now()}.jpg`);
-                    try {
+                try {
+                    // Re-upload Generated Images
+                    if (cleanUrl.includes("chipp-images")) {
+                        filePath = path.join(cachePath, `img_${Date.now()}.jpg`);
                         const res = await axios({ method: 'get', url: cleanUrl, responseType: 'stream' });
                         const writer = fs.createWriteStream(filePath);
                         res.data.pipe(writer);
-                        await new Promise((resolve, reject) => {
-                            writer.on('finish', resolve);
-                            writer.on('error', reject);
-                        });
+                        await new Promise((resolve) => writer.on('finish', resolve));
 
-                        await api.sendMessage(
-                            { body: "🖼️ Generated Image:", attachment: fs.createReadStream(filePath) },
-                            threadID,
-                            messageID
-                        );
-                    } catch (e) {
-                        console.error("Image Send Error:", e);
-                    } finally {
-                        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+                        await api.sendMessage({ body: "🖼️ Here is your generated image:", attachment: fs.createReadStream(filePath) }, threadID);
                     }
-                }
 
-                // Handle Documents/Files
-                if (cleanUrl.includes("downloadFile")) {
-                    try {
+                    // Re-upload Generated Files/Docs
+                    if (cleanUrl.includes("downloadFile")) {
                         const urlObj = new URL(cleanUrl);
                         const fileName = urlObj.searchParams.get("fileName") || `document_${Date.now()}.docx`;
-                        const filePath = path.join(cachePath, fileName);
+                        filePath = path.join(cachePath, fileName);
 
                         const res = await axios({ method: 'get', url: cleanUrl, responseType: 'stream' });
                         const writer = fs.createWriteStream(filePath);
                         res.data.pipe(writer);
-                        await new Promise((resolve, reject) => {
-                            writer.on('finish', resolve);
-                            writer.on('error', reject);
-                        });
+                        await new Promise((resolve) => writer.on('finish', resolve));
 
-                        await api.sendMessage(
-                            { body: `📂 File: ${fileName}`, attachment: fs.createReadStream(filePath) },
-                            threadID,
-                            messageID
-                        );
-                    } catch (e) {
-                        console.error("File Send Error:", e);
-                    } finally {
-                        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+                        await api.sendMessage({ body: `📂 Generated File: ${fileName}`, attachment: fs.createReadStream(filePath) }, threadID);
+                    }
+                } catch (err) {
+                    console.log("Attachment error (Skipped):", err.message);
+                } finally {
+                    // Delete local file after sending
+                    if (filePath && fs.existsSync(filePath)) {
+                        setTimeout(() => { try { fs.unlinkSync(filePath); } catch(e){} }, 5000);
                     }
                 }
             }
@@ -217,14 +127,8 @@ ${detectedImageUrl ? `\nImage to Analyze: ${detectedImageUrl}` : ""}`;
             await api.setMessageReaction("✅", messageID);
 
         } catch (error) {
-            console.error("AI Command Error:", error?.response?.data || error.message || error);
-            await api.sendMessage("❌ Service unavailable. Please try again later.", threadID, messageID);
-            await api.setMessageReaction("❌", messageID);
-        }
-    }
-};catch (error) {
-            console.error("AI Command Error:", error?.response?.data || error.message || error);
-            await api.sendMessage("❌ Service unavailable. Please try again later.", threadID, messageID);
+            console.error("AI Error:", error.message);
+            await api.sendMessage("❌ The AI service is currently busy. Please try again in a moment.", threadID, messageID);
             await api.setMessageReaction("❌", messageID);
         }
     }
