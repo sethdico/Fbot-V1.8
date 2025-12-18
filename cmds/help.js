@@ -4,81 +4,57 @@ module.exports = {
     usePrefix: false,
     admin: false,
     cooldown: 3,
-    description: "View the command list and categories.",
-    usage: "help [command] | help all | help [category]",
+    description: "View the command list or get info about a specific command.",
+    usage: "help [command] | help all",
 
     execute({ api, event, args }) {
         const { threadID, messageID } = event;
         const prefix = global.config?.prefix || "/";
 
-        const cmds = Array.from(global.commands.values());
-        // Filter unique commands to avoid listing aliases
-        const uniqueCmds = [...new Map(cmds.map(c => [c.name, c])).values()];
+        // Get all unique commands and sort them alphabetically
+        const commands = Array.from(global.commands.values());
+        const uniqueCmds = [...new Map(commands.map(c => [c.name, c])).values()]
+            .sort((a, b) => a.name.localeCompare(b.name));
 
         // 1. DETAIL VIEW (Usage: /help ai)
-        if (args.length > 0 && !["all", "ai", "fun", "info", "tools", "admin", "group"].includes(args[0].toLowerCase())) {
+        // This checks if the user typed a specific command name
+        if (args.length > 0 && args[0].toLowerCase() !== "all") {
             const query = args[0].toLowerCase();
             const cmd = global.commands.get(query);
 
-            if (!cmd) return api.sendMessage(`❌ Command "${query}" not found.`, threadID, messageID);
+            if (!cmd) {
+                return api.sendMessage(`❌ Command "${query}" not found. Type ${prefix}help all to see the list.`, threadID, messageID);
+            }
 
-            return api.sendMessage(
-                `📖 **COMMAND INFO: ${cmd.name.toUpperCase()}**\n` +
+            const infoMsg = `📖 **COMMAND DETAILS: ${cmd.name.toUpperCase()}**\n` +
                 `━━━━━━━━━━━━━━━━━━\n` +
-                `📝 **Desc:** ${cmd.description || "No description"}\n` +
+                `📝 **Description:** ${cmd.description || "No description available."}\n` +
                 `⌨️ **Usage:** ${cmd.usage || prefix + cmd.name}\n` +
-                `⏱️ **Wait:** ${cmd.cooldown || 0}s\n` +
-                `👑 **Admin:** ${cmd.admin ? "Yes" : "No"}\n` +
-                `🔗 **Aliases:** ${cmd.aliases ? cmd.aliases.join(", ") : "None"}`,
-                threadID, messageID
-            );
+                `⏱️ **Cooldown:** ${cmd.cooldown || 0}s\n` +
+                `👑 **Admin Only:** ${cmd.admin ? "Yes" : "No"}\n` +
+                `🔗 **Aliases:** ${cmd.aliases ? cmd.aliases.join(", ") : "None"}`;
+
+            return api.sendMessage(infoMsg, threadID, messageID);
         }
 
-        // 2. CATEGORIES LOGIC
-        const categories = {
-            "🤖 AI": ["ai", "aria", "copilot", "deepimg", "gemini", "gptnano", "quillbot", "venice", "webpilot", "xdash", "you"],
-            "🎮 FUN": ["48laws", "8ball", "bible", "pair"],
-            "🌍 INFO": ["define", "translate", "wiki", "stalk", "friendlist", "uid", "avatar", "pfp", "gcinfo"],
-            "⚡ TOOLS": ["remind", "uptime", "debug", "unsend", "loc", "say"],
-            "🔄 GROUP": ["theme", "nickname", "pin", "promote", "rename", "setemoji", "tagall", "kick", "leave"],
-            "👑 ADMIN": ["accept", "add", "addfriend", "inbox", "logout", "note", "notify", "pending", "pm", "restart", "story", "token", "welcome", "api_debug"]
-        };
-
-        // 3. SHOW ALL VIEW (Usage: /help all)
+        // 2. FULL LIST VIEW (Usage: /help all)
         if (args[0]?.toLowerCase() === "all") {
-            let allMsg = `📜 **FULL COMMAND LIST (${uniqueCmds.length})**\n\n`;
-            uniqueCmds.sort((a, b) => a.name.localeCompare(b.name)).forEach(c => {
-                allMsg += `• ${prefix}${c.name}${c.admin ? " 👑" : ""}\n`;
+            let listMsg = `📜 **FULL COMMAND LIST (${uniqueCmds.length})**\n\n`;
+            
+            uniqueCmds.forEach(c => {
+                listMsg += `• ${prefix}${c.name}${c.admin ? " 👑" : ""}\n`;
             });
-            allMsg += `\n💡 Type ${prefix}help <name> for details.`;
-            return api.sendMessage(allMsg, threadID, messageID);
+            
+            listMsg += `\n💡 **Tip:** Type \`${prefix}help <command name>\` to see exactly how to use it!`;
+            return api.sendMessage(listMsg, threadID, messageID);
         }
 
-        // 4. CATEGORY DETAIL VIEW (Usage: /help ai)
-        const requestedCat = Object.keys(categories).find(k => k.toLowerCase().includes(args[0]?.toLowerCase()));
-        if (requestedCat) {
-            let catMsg = `${requestedCat} **COMMANDS**\n━━━━━━━━━━━━━━━━━━\n`;
-            categories[requestedCat].forEach(name => {
-                const c = global.commands.get(name);
-                if (c) catMsg += `🔹 ${prefix}${c.name}\n`;
-            });
-            return api.sendMessage(catMsg, threadID, messageID);
-        }
-
-        // 5. DEFAULT MENU (Usage: /help)
-        let menuMsg = `╔═════════════════╗\n    🤖 **SYSTEM MENU**\n╚═════════════════╝\n`;
-        menuMsg += `👋 Hello! I have **${uniqueCmds.length}** commands.\n\n`;
+        // 3. DEFAULT SIMPLE MENU (Usage: /help)
+        let defaultMsg = `╔═════════════════╗\n    🤖 **HELP SYSTEM**\n╚═════════════════╝\n`;
+        defaultMsg += `👋 Hello! I am a multi-functional AI assistant.\n\n`;
+        defaultMsg += `📜 Type \`${prefix}help all\` to see every command I can do.\n\n`;
+        defaultMsg += `🔍 Type \`${prefix}help <command>\` (example: \`${prefix}help ai\`) to see what a specific command does and how to use it.`;
         
-        Object.entries(categories).forEach(([name, list]) => {
-            const count = list.filter(n => global.commands.has(n)).length;
-            if (count > 0) menuMsg += `${name} (${count} cmds)\n`;
-        });
-
-        menuMsg += `\n━━━━━━━━━━━━━━━━━━\n`;
-        menuMsg += `🔍 **View Category:** \`${prefix}help <category_name>\`\n`;
-        menuMsg += `📜 **View All:** \`${prefix}help all\`\n`;
-        menuMsg += `💡 **Command Details:** \`${prefix}help <command>\``;
-
-        return api.sendMessage(menuMsg, threadID, messageID);
+        return api.sendMessage(defaultMsg, threadID, messageID);
     }
 };
