@@ -1,75 +1,34 @@
 const axios = require("axios");
-const fs = require("fs");
-const path = require("path");
 
 module.exports = {
     name: "deepimg",
-    aliases: ["draw", "imagine"],
+    aliases: ["draw"],
     usePrefix: false,
-    usage: "deepimg <prompt>",
-    version: "1.1",
-    description: "AI Image generator.",
-    cooldown: 10,
+    cooldown: 15, // Higher cooldown for heavy task
 
     execute: async ({ api, event, args }) => {
-        const { threadID, messageID } = event;
-        const input = args.join(" ");
-
-        if (!input) return api.sendMessage("⚠️ Provide a prompt.", threadID, messageID);
-
-        // Default style logic
-        let prompt = input;
-        let style = "anime"; 
-        if (input.includes("|")) {
-            const parts = input.split("|");
-            prompt = parts[0].trim();
-            style = parts[1].trim() || "anime";
-        }
+        const prompt = args.join(" ");
+        if (!prompt) return api.sendMessage("🎨 Provide a description!", event.threadID);
 
         try {
-            api.setMessageReaction("🎨", messageID, () => {}, true);
-            const processingMsg = await api.sendMessage(`🎨 Generating "${prompt}"...`, threadID);
-
-            const apiUrl = "https://shin-apis.onrender.com/ai/deepimg";
-            const response = await axios.get(apiUrl, {
-                params: { prompt: prompt, style: style }
-            });
-
-            const imageUrl = response.data.url || response.data.image || response.data.result;
-
-            if (!imageUrl) throw new Error("API returned no image.");
-
-            // FIX: Ensure the cache folder exists in the main directory
-            const cacheDir = path.resolve(__dirname, "..", "cache");
-            if (!fs.existsSync(cacheDir)) {
-                fs.mkdirSync(cacheDir, { recursive: true });
-            }
+            api.setMessageReaction("🎨", event.messageID, () => {}, true);
             
-            const filePath = path.join(cacheDir, `deepimg_${Date.now()}.jpg`);
+            const url = `https://shin-apis.onrender.com/ai/deepimg?prompt=${encodeURIComponent(prompt)}&style=anime`;
+            const res = await axios.get(url);
+            const imgUrl = res.data.url || res.data.image;
 
-            const imageResponse = await axios({
-                url: imageUrl,
-                method: "GET",
-                responseType: "stream"
-            });
+            if (!imgUrl) throw new Error("No image returned");
 
-            const writer = fs.createWriteStream(filePath);
-            imageResponse.data.pipe(writer);
+            // Direct Stream - No Filesystem
+            const stream = await axios.get(imgUrl, { responseType: 'stream' });
 
-            writer.on("finish", () => {
-                api.unsendMessage(processingMsg.messageID);
-                api.sendMessage({
-                    body: `🎨 Result for: ${prompt}`,
-                    attachment: fs.createReadStream(filePath)
-                }, threadID, () => {
-    fs.unlink(filePath, (err) => {
-        if (err) console.warn("Cleanup warning (deepimg):", err.message);
-    }); // Delete after sending
-            });
+            await api.sendMessage({
+                body: `🎨 Result: ${prompt}`,
+                attachment: stream.data
+            }, event.threadID);
 
-        } catch (error) {
-            console.error("DeepImg Error:", error.message);
-            api.sendMessage("❌ Failed to generate image. The API might be sleeping.", threadID, messageID);
+        } catch (e) {
+            api.sendMessage("❌ Generation failed.", event.threadID);
         }
     }
 };
