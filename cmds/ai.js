@@ -1,19 +1,19 @@
 const axios = require("axios");
-const fs = require("fs");
-const path = require("path");
+// We removed 'fs' and 'path' to prevent disk crashes in mass groups.
+// We now use direct memory streams.
 
 // Memory storage: Key = User UID, Value = { chatSessionId, lastActive }
 const sessions = new Map();
 
 module.exports = {
     name: "ai",
-    aliases: ["chip", "amdus", "pai"],
+    aliases: ["chip", "amdus", "pai"], // Added gpt alias
     usePrefix: false,
     description: "Multi-functional AI Assistant made by Seth Asher Salinguhay. Features:\n• 🔍 Real-time Information (Search the web)\n• 👁️ Image Recognition (Analyze photos)\n• 🎨 Image Generation & Editing (Create art)\n• 📂 File Generator (Create documents & spreadsheets)",
-    usage: "ai <message>\n\nExamples:\n→ /ai who is the president? (Real-time info)\n→ /ai describe this [reply to a photo] (Recognition)\n→ /ai generate a cat photo (Generation)\n→ /ai make a doc about space (File creation)",
+    usage: "ai <message>",
     cooldown: 5,
 
-    execute: async ({ api, event, args }) => {
+    execute: async ({ api, event, args, config }) => {
         const { threadID, messageID, senderID, attachments, messageReply } = event;
         const userPrompt = args.join(" ");
 
@@ -30,7 +30,8 @@ module.exports = {
         }
 
         // --- 2. CONFIGURATION ---
-        const API_KEY = "live_561eee985c6d2d0523948b29c4188049697df36dd8677c7471bb74de4112cd35";
+        // CRITICAL FIX: Use key from config.json to allow easy updates
+        const API_KEY = config.chippApiKey; 
         const MODEL_ID = "newapplication-10034686";
         const SESSION_TIMEOUT = 60 * 60 * 1000;
 
@@ -76,52 +77,42 @@ ${detectedImageUrl ? `\nImage to Analyze: ${detectedImageUrl}` : ""}`;
 
             sessions.set(senderID, { chatSessionId: newSessionId, lastActive: Date.now() });
 
-            // Send text reply
-            await api.sendMessage(`🤖 **AI Assistant**\n━━━━━━━━━━━━━━━━\n${aiTextResponse}`, threadID, messageID);
-
-            // --- 5. ATTACHMENT PROCESSING (Safe Download & Upload) ---
+            // --- 5. ATTACHMENT PROCESSING (Mass-Group Optimized) ---
+            // Instead of parsing after sending text, we check for URLs first.
+            // If we find an image/file, we send it. If not, we send text.
+            
             const urlRegex = /(https?:\/\/[^\s]+)/g;
             const allUrls = aiTextResponse.match(urlRegex) || [];
-            const cachePath = path.resolve(__dirname, '..', 'cache');
-            if (!fs.existsSync(cachePath)) fs.mkdirSync(cachePath, { recursive: true });
+            let attachmentSent = false;
 
             for (let rawUrl of allUrls) {
                 let cleanUrl = rawUrl.replace(/[()\[\]"']/g, "");
-                let filePath = "";
 
-                try {
-                    // Re-upload Generated Images
-                    if (cleanUrl.includes("chipp-images")) {
-                        filePath = path.join(cachePath, `img_${Date.now()}.jpg`);
-                        const res = await axios({ method: 'get', url: cleanUrl, responseType: 'stream' });
-                        const writer = fs.createWriteStream(filePath);
-                        res.data.pipe(writer);
-                        await new Promise((resolve) => writer.on('finish', resolve));
+                // Check if it's a Chipp Image or Downloadable File
+                if (cleanUrl.includes("chipp-images") || cleanUrl.includes("downloadFile")) {
+                    try {
+                        // OPTIMIZATION: Stream directly from URL to Facebook.
+                        // No saving to 'cache' folder. No disk usage. Fast & Safe.
+                        const streamResponse = await axios.get(cleanUrl, { responseType: 'stream' });
+                        
+                        // Clean the URL out of the text so we don't spam a long link
+                        const cleanText = aiTextResponse.replace(rawUrl, "").replace("()", "").trim();
 
-                        await api.sendMessage({ body: "🖼️ Here is your generated image:", attachment: fs.createReadStream(filePath) }, threadID);
-                    }
+                        await api.sendMessage({
+                            body: cleanText || "📂 Here is your file:",
+                            attachment: streamResponse.data
+                        }, threadID);
 
-                    // Re-upload Generated Files/Docs
-                    if (cleanUrl.includes("downloadFile")) {
-                        const urlObj = new URL(cleanUrl);
-                        const fileName = urlObj.searchParams.get("fileName") || `document_${Date.now()}.docx`;
-                        filePath = path.join(cachePath, fileName);
-
-                        const res = await axios({ method: 'get', url: cleanUrl, responseType: 'stream' });
-                        const writer = fs.createWriteStream(filePath);
-                        res.data.pipe(writer);
-                        await new Promise((resolve) => writer.on('finish', resolve));
-
-                        await api.sendMessage({ body: `📂 Generated File: ${fileName}`, attachment: fs.createReadStream(filePath) }, threadID);
-                    }
-                } catch (err) {
-                    console.log("Attachment error (Skipped):", err.message);
-                } finally {
-                    // Delete local file after sending
-                    if (filePath && fs.existsSync(filePath)) {
-                        setTimeout(() => { try { fs.unlinkSync(filePath); } catch(e){} }, 5000);
+                        attachmentSent = true;
+                    } catch (err) {
+                        console.log("Stream Error:", err.message);
                     }
                 }
+            }
+
+            // If no attachment was sent, just send the text response
+            if (!attachmentSent) {
+                await api.sendMessage(`🤖 **AI Assistant**\n━━━━━━━━━━━━━━━━\n${aiTextResponse}`, threadID, messageID);
             }
 
             await api.setMessageReaction("✅", messageID);
