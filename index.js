@@ -1,7 +1,27 @@
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
-const login = require('ws3-fca'); // Direct require
+const axios = require('axios');
+
+// --- 🔧 ROBUST LIBRARY LOADER (Fixes "login is not a function") ---
+let login;
+try {
+    const loginModule = require('ws3-fca');
+    // ws3-fca exports an object { login: [Function] } in some versions
+    if (loginModule && typeof loginModule.login === 'function') {
+        login = loginModule.login;
+    } else if (typeof loginModule === 'function') {
+        login = loginModule;
+    } else if (loginModule && typeof loginModule.default === 'function') {
+        login = loginModule.default;
+    } else {
+        throw new Error("Could not find login function in ws3-fca module.");
+    }
+} catch (e) {
+    console.error("❌ CRITICAL ERROR: ws3-fca library failed to load.");
+    console.error("Details:", e.message);
+    process.exit(1);
+}
 
 // --- GLOBAL STATE ---
 global.isLoggedIn = false;
@@ -57,16 +77,17 @@ const processQueue = async () => {
     }, config.messageDelay || 2000);
 };
 
-// --- API WRAPPER (FIXED FOR WS3-FCA) ---
+// --- API WRAPPER (Fixes "MessageID should be string") ---
 const createSafeApi = (rawApi) => {
     return {
         ...rawApi,
+        // Rewritten sendMessage to use Promises instead of Callbacks
         sendMessage: (msg, threadID, callback = null, replyID = null) => {
             return new Promise((resolve, reject) => {
                 msgQueue.push({
                     execute: () => {
-                        // FIX: ws3-fca takes (msg, threadID, replyID). It returns a Promise.
-                        // We must NOT pass the callback as the 3rd argument.
+                        // CRITICAL FIX: ws3-fca arguments are (msg, threadID, replyID)
+                        // It returns a Promise. We handle the callback manually.
                         return rawApi.sendMessage(msg, String(threadID), replyID ? String(replyID) : null)
                             .then((info) => {
                                 if (callback) callback(null, info);
@@ -82,10 +103,11 @@ const createSafeApi = (rawApi) => {
                 processQueue();
             });
         },
-        // Force string types for reactions
+        // Fix for reactions (force string types)
         setMessageReaction: (emoji, messageID, callback, force) => {
             return rawApi.setMessageReaction(emoji, String(messageID), callback, force);
         },
+        // Fix for streams (use Promise)
         sendMessageStream: async (text, stream, threadID) => {
              msgQueue.push({
                 execute: () => {
@@ -167,6 +189,7 @@ async function startBot() {
         return;
     }
 
+    // Fix: Pass { appState } object, not just appState
     login({ appState }, async (err, rawApi) => {
         if (err) {
             console.error("❌ LOGIN FAILED:", err);
@@ -201,7 +224,7 @@ async function startBot() {
         api.listenMqtt(async (err, event) => {
             if (err) return console.error("Listener Error:", err);
 
-            // FIX: Force primitive strings
+            // Force IDs to be Strings immediately
             if (event.messageID) event.messageID = String(event.messageID);
             if (event.threadID) event.threadID = String(event.threadID);
             if (event.senderID) event.senderID = String(event.senderID);
