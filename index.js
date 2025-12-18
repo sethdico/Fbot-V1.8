@@ -3,11 +3,10 @@ const path = require('path');
 const express = require('express');
 const axios = require('axios');
 
-// --- 🔧 ROBUST LIBRARY LOADER (The Fix) ---
+// --- 🔧 ROBUST LIBRARY LOADER ---
 let login;
 try {
     const loginModule = require('ws3-fca');
-    // Check all possible export locations
     if (typeof loginModule === 'function') login = loginModule;
     else if (loginModule && typeof loginModule.default === 'function') login = loginModule.default;
     else if (loginModule && typeof loginModule.login === 'function') login = loginModule.login;
@@ -73,7 +72,7 @@ const processQueue = async () => {
     }, config.messageDelay || 2000);
 };
 
-// --- API WRAPPER ---
+// --- API WRAPPER (FIXED FOR STRICT TYPES) ---
 const createSafeApi = (rawApi) => {
     return {
         ...rawApi,
@@ -82,7 +81,8 @@ const createSafeApi = (rawApi) => {
                 msgQueue.push({
                     execute: () => {
                         return new Promise((done) => {
-                            rawApi.sendMessage(msg, threadID, (err, info) => {
+                            // FIX: Force threadID to be a primitive string
+                            rawApi.sendMessage(msg, String(threadID), (err, info) => {
                                 if (err) {
                                     if (callback) callback(err, null);
                                     reject(err);
@@ -91,19 +91,23 @@ const createSafeApi = (rawApi) => {
                                     resolve(info);
                                 }
                                 done();
-                            }, replyID);
+                            }, replyID ? String(replyID) : null);
                         });
                     }
                 });
                 processQueue();
             });
         },
-        setMessageReaction: rawApi.setMessageReaction,
+        // FIX: Wrapper to force MessageID to string for reactions
+        setMessageReaction: (emoji, messageID, callback, force) => {
+            return rawApi.setMessageReaction(emoji, String(messageID), callback, force);
+        },
         sendMessageStream: async (text, stream, threadID) => {
              msgQueue.push({
                 execute: () => {
                     return new Promise((done) => {
-                        rawApi.sendMessage({ body: text, attachment: stream }, threadID, () => done());
+                        // FIX: Force threadID to be a primitive string
+                        rawApi.sendMessage({ body: text, attachment: stream }, String(threadID), () => done());
                     });
                 }
             });
@@ -176,7 +180,6 @@ async function startBot() {
 
     const appState = JSON.parse(fs.readFileSync(appStatePath, 'utf8'));
 
-    // Fix: Pass object { appState } directly
     login({ appState }, async (err, rawApi) => {
         if (err) {
             console.error("❌ LOGIN FAILED:", err);
@@ -196,10 +199,8 @@ async function startBot() {
             selfListen: false
         });
 
-        // Start Scheduler
         if (config.autoRestart) {
             try {
-                // Ensure custom.js exists, or skip
                 if(fs.existsSync('./custom.js')) require('./custom')(config.ownerID, api, config);
             } catch(e) {}
         }
@@ -212,6 +213,11 @@ async function startBot() {
 
         api.listenMqtt(async (err, event) => {
             if (err) return console.error("Listener Error:", err);
+
+            // FIX: Force MessageID to be a primitive string immediately
+            if (event.messageID) event.messageID = String(event.messageID);
+            if (event.threadID) event.threadID = String(event.threadID);
+            if (event.senderID) event.senderID = String(event.senderID);
 
             if (global.events.has(event.type)) {
                 try { await global.events.get(event.type).execute({ api, event, config }); } catch(e){}
@@ -237,8 +243,8 @@ async function startBot() {
 
                 if (!cmd) return;
 
-                const isOwner = String(event.senderID) === String(config.ownerID);
-                const isAdmin = config.admin.includes(String(event.senderID));
+                const isOwner = event.senderID === config.ownerID;
+                const isAdmin = config.admin.includes(event.senderID);
                 
                 if (cmd.admin && !isOwner && !isAdmin) {
                     return api.setMessageReaction("🔒", event.messageID, () => {}, true);
