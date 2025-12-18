@@ -7,7 +7,7 @@ const sessions = new Map();
 
 module.exports = {
     name: "ai",
-    aliases: ["chip", "amdus", "vision"],
+    aliases: ["chip", "amdus", "pai"],
     usePrefix: false,
     description: "Powerful AI by Seth Asher Salinguhay. Supports:\n• Image generation, editing & recognition\n• Real-time web search & answers\n• File creation (text, JSON, CSV, etc.)\n• File preview (reply with “show” to see contents)",
     usage: "ai <prompt> or <replytoimage>\nReply to a generated file with “show” to preview its contents",
