@@ -7,7 +7,7 @@ const sessions = new Map();
 
 module.exports = {
     name: "ai",
-    aliases: ["chip", "amdus", "pai"],
+    aliases: ["chip", "amdus", "vision"],
     usePrefix: false,
     description: "Powerful AI by Seth Asher Salinguhay. Supports:\n• Image generation, editing & recognition\n• Real-time web search & answers\n• File creation (text, JSON, CSV, etc.)\n• File preview (reply with “show” to see contents)",
     usage: "ai <prompt> or <replytoimage>\nReply to a generated file with “show” to preview its contents",
@@ -18,59 +18,56 @@ module.exports = {
         let userPrompt = args.join(" ");
 
         // --- NEW: Handle "show" reply ---
-        if ((body?.trim().toLowerCase() === "show") && messageReply) {
-            // Look for a file URL in the replied-to message
-            const replyBody = messageReply.body || "";
-            const urlRegex = /(https?:\/\/[^\s]+)/g;
-            const urls = replyBody.match(urlRegex) || [];
-
-            // Also check if the replied message had attachments (e.g., direct file)
-            let fileUrl = "";
-            if (messageReply.attachments?.[0]?.url) {
-                fileUrl = messageReply.attachments[0].url;
-            } else if (urls.length > 0) {
-                const fileUrlMatch = urls.find(u => /\.(txt|json|csv|log|js|ts|md|html|xml|yml|yaml)$/i.test(u));
-                fileUrl = fileUrlMatch || urls[0];
+        if (body?.trim().toLowerCase() === "show") {
+            // Check if there's a replied-to message with an attachment
+            if (!messageReply || !messageReply.attachments || messageReply.attachments.length === 0) {
+                return api.sendMessage("❌ No file found to show. Please reply to a file with \"show\".", threadID, messageID);
             }
 
+            // Get the first attachment URL
+            const fileUrl = messageReply.attachments[0].url;
             if (!fileUrl) {
-                return api.sendMessage("📎 No file found in the replied message.", threadID, messageID);
+                return api.sendMessage("❌ Could not get the file URL. The file might be corrupted or expired.", threadID, messageID);
             }
 
+            // Determine file extension
             const ext = fileUrl.split('.').pop().split(/[?#]/)[0].toLowerCase();
             const textExtensions = ['txt', 'json', 'csv', 'log', 'js', 'ts', 'md', 'html', 'xml', 'yml', 'yaml'];
-            if (!textExtensions.includes(ext)) {
-                return api.sendMessage(`📄 File is not a readable text file (.${ext}).`, threadID, messageID);
-            }
 
-            try {
-                await api.setMessageReaction("⏳", messageID);
+            // If it's a text-based file, try to fetch and display its content
+            if (textExtensions.includes(ext)) {
+                try {
+                    await api.setMessageReaction("⏳", messageID);
 
-                const response = await axios({
-                    method: 'get',
-                    url: fileUrl,
-                    responseType: 'text',
-                    headers: {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-                        'Accept': '*/*',
-                        'Accept-Language': 'en-US,en;q=0.9',
-                        'Referer': 'https://www.messenger.com/',
-                        'Origin': 'https://www.messenger.com'
-                    },
-                    maxContentLength: 1024 * 1024 // 1MB max
-                });
+                    // Use headers to avoid 403 errors on Facebook CDN
+                    const response = await axios({
+                        method: 'get',
+                        url: fileUrl,
+                        responseType: 'text',
+                        headers: {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+                            'Accept': '*/*',
+                            'Referer': 'https://www.messenger.com/',
+                            'Origin': 'https://www.messenger.com'
+                        },
+                        maxContentLength: 1024 * 1024 // 1MB max
+                    });
 
-                let content = response.data;
-                if (content.length > 2000) {
-                    content = content.substring(0, 1997) + "...";
+                    let content = response.data;
+                    if (content.length > 2000) {
+                        content = content.substring(0, 1997) + "...";
+                    }
+
+                    await api.sendMessage(`📄 Preview of ${ext} file:\n\n\`\`\`\n${content}\n\`\`\``, threadID, messageID);
+                    await api.setMessageReaction("✅", messageID);
+                } catch (err) {
+                    console.error("File preview error:", err.message || err);
+                    await api.sendMessage("❌ Failed to fetch or read the file. It may be private, expired, or too large.", threadID, messageID);
+                    await api.setMessageReaction("❌", messageID);
                 }
-
-                await api.sendMessage(`📜 Preview of file (.${ext}):\n\n\`\`\`\n${content}\n\`\`\``, threadID, messageID);
-                await api.setMessageReaction("✅", messageID);
-            } catch (err) {
-                console.error("File preview error:", err.message || err);
-                await api.sendMessage("❌ Failed to fetch or read the file. It may be private, expired, or too large.", threadID, messageID);
-                await api.setMessageReaction("❌", messageID);
+            } else {
+                // For non-text files (like .xlsx, .docx, .jpg), just tell the user it's binary
+                await api.sendMessage(`📎 File is a binary format (.${ext}). I cannot preview its contents.`, threadID, messageID);
             }
             return;
         }
@@ -136,7 +133,7 @@ ${detectedImageUrl ? `\nImage to Analyze: ${detectedImageUrl}` : ""}`;
                 requestData.chatSessionId = userSession.chatSessionId;
             }
 
-            // --- API REQUEST (NO TRAILING SPACE!) ---
+            // --- API REQUEST ---
             const response = await axios.post(
                 "https://app.chipp.ai/api/v1/chat/completions",
                 requestData,
@@ -220,6 +217,12 @@ ${detectedImageUrl ? `\nImage to Analyze: ${detectedImageUrl}` : ""}`;
             await api.setMessageReaction("✅", messageID);
 
         } catch (error) {
+            console.error("AI Command Error:", error?.response?.data || error.message || error);
+            await api.sendMessage("❌ Service unavailable. Please try again later.", threadID, messageID);
+            await api.setMessageReaction("❌", messageID);
+        }
+    }
+};catch (error) {
             console.error("AI Command Error:", error?.response?.data || error.message || error);
             await api.sendMessage("❌ Service unavailable. Please try again later.", threadID, messageID);
             await api.setMessageReaction("❌", messageID);
