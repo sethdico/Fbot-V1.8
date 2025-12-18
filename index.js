@@ -3,11 +3,11 @@ const path = require('path');
 const express = require('express');
 const axios = require('axios');
 
-// --- 🔧 ROBUST LIBRARY LOADER (Fixes "login is not a function") ---
+// --- 🔧 ROBUST LIBRARY LOADER ---
 let login;
 try {
     const loginModule = require('ws3-fca');
-    // ws3-fca exports an object { login: [Function] } in some versions
+    // Handle different export styles of the library
     if (loginModule && typeof loginModule.login === 'function') {
         login = loginModule.login;
     } else if (typeof loginModule === 'function') {
@@ -47,6 +47,7 @@ try {
     process.exit(1);
 }
 
+// Ensure proper types
 config.ownerID = String(config.ownerID);
 config.admin = Array.isArray(config.admin) ? config.admin.map(id => String(id)) : [config.ownerID];
 config.prefix = config.prefix || "/";
@@ -56,6 +57,7 @@ console.log(`👑 Owner ID: ${config.ownerID}`);
 console.log(`🛡️ Safe Mode: ${config.safeMode ? "ON" : "OFF"}`);
 
 // --- 🛡️ QUEUE SYSTEM ---
+// Prevents bans by spacing out messages
 const msgQueue = [];
 let queueProcessing = false;
 
@@ -70,26 +72,38 @@ const processQueue = async () => {
         console.error("⚠️ Queue Task Error:", e.message);
     }
 
-    // Wait 2 seconds (or config delay) before next message
+    // Wait delay (default 2s) before processing next message
     setTimeout(() => {
         queueProcessing = false;
         processQueue();
     }, config.messageDelay || 2000);
 };
 
-// --- API WRAPPER (Fixes "MessageID should be string") ---
+// --- API WRAPPER (FIXED & SMART) ---
 const createSafeApi = (rawApi) => {
     return {
         ...rawApi,
-        // Rewritten sendMessage to use Promises instead of Callbacks
-        sendMessage: (msg, threadID, callback = null, replyID = null) => {
+        // Smart sendMessage handles (msg, threadID, callback) AND (msg, threadID, replyID)
+        sendMessage: (msg, threadID, arg3 = null, arg4 = null) => {
             return new Promise((resolve, reject) => {
+                let callback = null;
+                let replyID = null;
+
+                // Detect what the 3rd argument is
+                if (typeof arg3 === 'function') {
+                    callback = arg3;
+                    replyID = arg4;
+                } else if (typeof arg3 === 'string' || typeof arg3 === 'number') {
+                    replyID = String(arg3);
+                    callback = typeof arg4 === 'function' ? arg4 : null;
+                }
+
                 msgQueue.push({
                     execute: () => {
-                        // CRITICAL FIX: ws3-fca arguments are (msg, threadID, replyID)
-                        // It returns a Promise. We handle the callback manually.
-                        return rawApi.sendMessage(msg, String(threadID), replyID ? String(replyID) : null)
+                        // Pass 'null' explicitly for the callback slot in the raw API to prevent errors
+                        return rawApi.sendMessage(msg, String(threadID), replyID, null)
                             .then((info) => {
+                                // We handle the callback ourselves
                                 if (callback) callback(null, info);
                                 resolve(info);
                             })
@@ -103,15 +117,15 @@ const createSafeApi = (rawApi) => {
                 processQueue();
             });
         },
-        // Fix for reactions (force string types)
+        // Force string types for reactions
         setMessageReaction: (emoji, messageID, callback, force) => {
             return rawApi.setMessageReaction(emoji, String(messageID), callback, force);
         },
-        // Fix for streams (use Promise)
+        // Stream helper
         sendMessageStream: async (text, stream, threadID) => {
              msgQueue.push({
                 execute: () => {
-                    return rawApi.sendMessage({ body: text, attachment: stream }, String(threadID));
+                    return rawApi.sendMessage({ body: text, attachment: stream }, String(threadID), null, null);
                 }
             });
             processQueue();
@@ -146,6 +160,7 @@ function loadFiles() {
     const eventsDir = path.resolve(__dirname, 'events');
     const cmdsDir = path.resolve(__dirname, 'cmds');
 
+    // Load Events
     if (fs.existsSync(eventsDir)) {
         fs.readdirSync(eventsDir).forEach(file => {
             if (!file.endsWith('.js')) return;
@@ -156,6 +171,7 @@ function loadFiles() {
         });
     }
 
+    // Load Commands
     if (fs.existsSync(cmdsDir)) {
         fs.readdirSync(cmdsDir).forEach(file => {
             if (!file.endsWith('.js')) return;
@@ -189,7 +205,7 @@ async function startBot() {
         return;
     }
 
-    // Fix: Pass { appState } object, not just appState
+    // Pass { appState } object structure required by ws3-fca
     login({ appState }, async (err, rawApi) => {
         if (err) {
             console.error("❌ LOGIN FAILED:", err);
@@ -198,7 +214,7 @@ async function startBot() {
 
         global.isLoggedIn = true;
         
-        // Wrap API for Safety
+        // Wrap API for Safety & Features
         const api = createSafeApi(rawApi);
         global.api = api;
 
@@ -209,33 +225,37 @@ async function startBot() {
             selfListen: false
         });
 
+        // Start Scheduler (if exists)
         if (config.autoRestart) {
             try {
                 if(fs.existsSync('./custom.js')) require('./custom')(config.ownerID, api, config);
             } catch(e) {}
         }
 
+        // Initialize Events
         global.events.forEach(event => {
             if (event.onStart) event.onStart(api);
         });
 
         console.log(`✅ BOT STARTED | SAFE MODE: ${config.safeMode ? "ACTIVE" : "OFF"}`);
 
+        // Listen for messages
         api.listenMqtt(async (err, event) => {
             if (err) return console.error("Listener Error:", err);
 
-            // Force IDs to be Strings immediately
+            // FIX: Ensure all IDs are strings immediately
             if (event.messageID) event.messageID = String(event.messageID);
             if (event.threadID) event.threadID = String(event.threadID);
             if (event.senderID) event.senderID = String(event.senderID);
 
+            // Handle Global Events (like Welcome)
             if (global.events.has(event.type)) {
                 try { await global.events.get(event.type).execute({ api, event, config }); } catch(e){}
             }
 
             if (!event.body) return;
 
-            // Anti-Raid
+            // Anti-Raid: Ignore spamming groups
             const now = Date.now();
             const threadData = threadRateLimit.get(event.threadID) || [];
             const recent = threadData.filter(t => now - t < 10000); 
@@ -246,6 +266,7 @@ async function startBot() {
             recent.push(now);
             threadRateLimit.set(event.threadID, recent);
 
+            // Command Handling
             if (event.body.startsWith(config.prefix)) {
                 const args = event.body.slice(config.prefix.length).trim().split(/ +/);
                 const cmdName = args.shift().toLowerCase();
@@ -283,5 +304,6 @@ async function startBot() {
 
 startBot();
 
+// Prevent crashes
 process.on('uncaughtException', (err) => console.error("🔥 Crash prevented:", err.message));
 process.on('unhandledRejection', (err) => console.error("🔥 Rejection prevented:", err.message));
