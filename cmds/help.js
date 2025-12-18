@@ -1,78 +1,79 @@
 module.exports = {
     name: "help",
-    aliases: ["menu", "h", "commands"],
-    usePrefix: false, // Works with or without prefix
-    description: "Shows you the fun things I can do!",
-    usage: "help",
+    aliases: ["menu", "h"],
+    usePrefix: false,
+    description: "Shows the command menu.",
+    usage: "help [category or command]",
 
     execute: async ({ api, event, args, config }) => {
         const { threadID, senderID } = event;
         const prefix = config.prefix || "/";
+        const input = args[0] ? args[0].toLowerCase() : null;
 
-        // 1. Check Permissions (To hide admin commands from regular members)
-        const isOwner = String(senderID) === String(config.ownerID);
-        const isAdmin = config.admin.includes(String(senderID));
-        const hasPerms = isOwner || isAdmin;
+        // 🛠️ CATEGORIES
+        // I renamed "AI" to "Chat" so it doesn't conflict with the /ai command
+        const categories = {
+            "🤖 Chat & Assistants": [
+                "ai", "aria", "copilot", "gemini", "gptnano", 
+                "quillbot", "venice", "webpilot", "xdash", "you"
+            ],
+            "👥 Group Controls": [
+                "add", "gcinfo", "kick", "leave", "nickname", 
+                "pin", "promote", "rename", "setemoji", "tagall", "theme"
+            ],
+            "🎨 Fun & Media": [
+                "48laws", "8ball", "bible", "deepimg", "pair"
+            ],
+            "🔧 Utilities": [
+                "define", "loc", "myid", "remind", "trans", 
+                "uid", "uptime", "unsend", "debug"
+            ],
+            "👤 Social & Profile": [
+                "accept", "addfriend", "friendlist", "inbox", 
+                "notes", "pending", "pm", "stalk", "story"
+            ]
+        };
 
-        // 2. Get and Sort Commands
-        const commands = Array.from(global.commands.values());
-        // Remove duplicates (aliases)
-        const uniqueCmds = [...new Map(commands.map(c => [c.name, c])).values()];
-        
-        // Filter: Show only commands the user can actually use
-        const visibleCmds = uniqueCmds.filter(cmd => {
-            if (cmd.admin && !hasPerms) return false; // Hide admin commands
-            return true;
-        });
-
-        // Sort alphabetically (A-Z)
-        visibleCmds.sort((a, b) => a.name.localeCompare(b.name));
-
-        // ============================
-        // 🔎 HELP FOR SPECIFIC COMMAND
-        // ============================
-        if (args[0]) {
-            const cmdName = args[0].toLowerCase();
-            const cmd = global.commands.get(cmdName);
-
-            // If command doesn't exist or is hidden
-            if (!cmd || (cmd.admin && !hasPerms)) {
-                return api.sendMessage(`🤔 Hmmm... I don't know a command called "${cmdName}".`, threadID);
+        // 1. CHECK IF USER IS ASKING FOR A SPECIFIC CATEGORY
+        // Logic: specific command search happens AFTER this loop if no match found
+        for (const [catName, cmdList] of Object.entries(categories)) {
+            // Check if input matches category (e.g. "chat", "group", "fun")
+            if (input && catName.toLowerCase().includes(input)) {
+                const list = cmdList.map(c => `🔹 ${prefix}${c}`).join("\n");
+                return api.sendMessage(`📂 **${catName}**\n━━━━━━━━━━━━━━━━\n${list}\n━━━━━━━━━━━━━━━━\n💡 Type ${prefix}help <command> for details.`, threadID);
             }
-
-            const msg = `
-📘 **Help: ${cmd.name.toUpperCase()}**
-━━━━━━━━━━━━━━━━
-✨ **What it does:**
-${cmd.description || "Something cool!"}
-
-⌨️ **Type this:**
-${cmd.usage ? cmd.usage : `${prefix}${cmd.name}`}
-
-${cmd.aliases ? `🖇️ **Shortcuts:** ${cmd.aliases.join(", ")}` : ""}
-━━━━━━━━━━━━━━━━
-`;
-            return api.sendMessage(msg, threadID);
         }
 
-        // ============================
-        // 📜 MAIN MENU (Clean List)
-        // ============================
-        const cmdList = visibleCmds.map(c => `/${c.name}`).join(", ");
-        const randomCmd = visibleCmds[Math.floor(Math.random() * visibleCmds.length)].name;
-
-        const msg = `
-🤖 **Hello! I am ${config.botName || "Amadeus"}!**
-Here are the cool things I can do:
-
+        // 2. CHECK IF USER IS ASKING FOR A SPECIFIC COMMAND
+        // This now works for "/help ai" because the category "Chat" doesn't contain the word "ai"
+        if (input) {
+            const cmd = global.commands.get(input) || global.commands.get(global.aliases?.get(input));
+            if (cmd) {
+                const info = `
+📖 **COMMAND: ${cmd.name.toUpperCase()}**
 ━━━━━━━━━━━━━━━━
-${cmdList}
-━━━━━━━━━━━━━━━━
+📝 **Description:** ${cmd.description || "No description."}
+⌨️ **Usage:** ${cmd.usage ? cmd.usage : `${prefix}${cmd.name}`}
+🖇️ **Aliases:** ${cmd.aliases ? cmd.aliases.join(", ") : "None"}
+👑 **Admin Only:** ${cmd.admin ? "Yes" : "No"}
+━━━━━━━━━━━━━━━━`;
+                return api.sendMessage(info, threadID);
+            }
+        }
 
-💡 **Tip:** Want to know more about a command?
-Type: \`/help <name>\` (Example: \`/help ${randomCmd}\`)
-        `;
+        // 3. MAIN MENU (The Categories)
+        let menuMsg = `🤖 **${config.botName || "Amadeus"} Menu**\n`;
+        menuMsg += `👋 Hello! Select a category below:\n\n`;
 
-        return api.sendMessage(msg, threadID);
+        Object.keys(categories).forEach((cat, i) => {
+            // Extracts "chat", "group", "fun" to show as the tip
+            const keyword = cat.split(" ")[1].toLowerCase(); 
+            menuMsg += `${i + 1}. **${cat}**\n   👉 Type: \`${prefix}help ${keyword}\`\n\n`;
+        });
+
+        menuMsg += `🔐 **Admins:** Type \`${prefix}cmd\` for the Admin Panel.\n`;
+        menuMsg += `❓ **Specific:** Type \`${prefix}help <command>\` (e.g. ${prefix}help ai)`;
+
+        return api.sendMessage(menuMsg, threadID);
     }
 };
