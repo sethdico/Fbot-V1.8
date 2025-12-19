@@ -65,7 +65,7 @@ module.exports = {
     description: "Advanced AI Assistant with image recognition, web search, and file generation",
     usage: "ai <question>/<reply to image> | ai clear (reset)",
     cooldown: 5,
-    credits: "Seth Asher Salinguhay", // Preserved credits
+    credits: "https://www.facebook.com/seth09asher", // Preserved credits
 
     execute: async ({ api, event, args, config }) => {
         const { threadID, messageID, senderID, attachments, messageReply } = event;
