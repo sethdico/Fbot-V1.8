@@ -1,225 +1,218 @@
 const axios = require("axios");
 
-// === SESSION MANAGEMENT ===
-// Stores user conversation sessions with automatic cleanup
-const sessions = new Map();
-const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
-const MAX_SESSIONS = 1000; // Prevent memory leaks
+// ==============================================================================
+// CONFIGURATION & CONSTANTS
+// ==============================================================================
+const CONFIG = {
+    API_URL: "https://app.chipp.ai/api/v1/chat/completions",
+    MODEL_ID: "newapplication-10034686", // Your specific model
+    TIMEOUT: 45000, // 45 seconds per request
+    
+    // Session Limits
+    SESSION_TIMEOUT: 30 * 60 * 1000, // 30 minutes
+    MAX_SESSIONS: 1000, // Prevent memory leaks
+    
+    // Rate Limiting
+    MAX_REQUESTS: 3,
+    RATE_LIMIT_WINDOW: 60000 // 1 minute
+};
 
-// Clean expired sessions every 5 minutes
+// ==============================================================================
+// STATE MANAGEMENT (Memory)
+// ==============================================================================
+const sessions = new Map();
+const rateLimits = new Map();
+
+// Automatic Garbage Collection (Runs every 5 minutes)
 setInterval(() => {
     const now = Date.now();
     let cleaned = 0;
-    
+
+    // 1. Clean expired sessions
     sessions.forEach((session, userId) => {
-        if (now - session.lastActive > SESSION_TIMEOUT) {
+        if (now - session.lastActive > CONFIG.SESSION_TIMEOUT) {
             sessions.delete(userId);
             cleaned++;
         }
     });
-    
-    // Safety valve: if too many sessions, keep only most recent ones
-    if (sessions.size > MAX_SESSIONS) {
+
+    // 2. Safety Valve: Memory protection
+    if (sessions.size > CONFIG.MAX_SESSIONS) {
         const sortedSessions = Array.from(sessions.entries())
             .sort((a, b) => b[1].lastActive - a[1].lastActive)
-            .slice(0, MAX_SESSIONS);
+            .slice(0, CONFIG.MAX_SESSIONS);
         
         sessions.clear();
         sortedSessions.forEach(([userId, session]) => sessions.set(userId, session));
     }
+    
+    // 3. Clean old rate limit data
+    rateLimits.forEach((timestamps, userId) => {
+        const recent = timestamps.filter(t => now - t < CONFIG.RATE_LIMIT_WINDOW);
+        if (recent.length === 0) rateLimits.delete(userId);
+        else rateLimits.set(userId, recent);
+    });
+
 }, 300000);
 
-// === RATE LIMITING ===
-const rateLimits = new Map();
-const MAX_REQUESTS = 3; // requests per window
-const RATE_LIMIT_WINDOW = 60000; // 1 minute
-
-/**
- * Checks if user has exceeded rate limits
- * @param {string} userId - Facebook user ID
- * @returns {boolean} true if rate limited
- */
-const isRateLimited = (userId) => {
-    const now = Date.now();
-    const userKey = `ai_${userId}`;
-    const requests = rateLimits.get(userKey) || [];
-    
-    // Filter out old requests
-    const recentRequests = requests.filter(time => now - time < RATE_LIMIT_WINDOW);
-    
-    if (recentRequests.length >= MAX_REQUESTS) {
-        return true;
-    }
-    
-    // Update rate limit tracking
-    recentRequests.push(now);
-    rateLimits.set(userKey, recentRequests);
-    
-    return false;
-};
-
-// === MAIN COMMAND DEFINITION ===
+// ==============================================================================
+// MAIN COMMAND MODULE
+// ==============================================================================
 module.exports = {
     name: "ai",
     aliases: ["chip", "amdus", "pai"],
-    usePrefix: false,
+    version: "2.0",
     description: "Advanced AI Assistant with image recognition, web search, and file generation",
-    usage: "ai <question or command>",
+    usage: "ai <question>/<reply to image> | ai clear (reset)",
     cooldown: 5,
-    
-    /**
-     * Main command execution function
-     * @param {Object} context - Command context
-     * @param {Object} context.api - Facebook API wrapper
-     * @param {Object} context.event - Message event
-     * @param {Array} context.args - Command arguments
-     * @param {Object} context.config - Bot configuration
-     */
+    credits: "Seth Asher Salinguhay", // Preserved credits
+
     execute: async ({ api, event, args, config }) => {
         const { threadID, messageID, senderID, attachments, messageReply } = event;
         const userPrompt = args.join(" ").trim();
-        let imageUrl = "";
         
-        // === STEP 1: INPUT VALIDATION ===
-        // Detect image from attachments or reply
+        // ---------------------------------------------------------
+        // 1. COMMANDS & PRE-CHECKS
+        // ---------------------------------------------------------
+        
+        // Reset Command
+        if (userPrompt.toLowerCase() === "clear" || userPrompt.toLowerCase() === "reset") {
+            sessions.delete(senderID);
+            return api.sendMessage("🧹 Session cleared. I've forgotten our previous conversation.", threadID, messageID);
+        }
+
+        // Image Detection (Current message OR Reply)
+        let imageUrl = "";
         if (attachments?.[0]?.type === "photo") {
             imageUrl = attachments[0].url;
         } else if (messageReply?.attachments?.[0]?.type === "photo") {
             imageUrl = messageReply.attachments[0].url;
         }
-        
-        // Rate limiting check
+
+        // Rate Limiting
         if (isRateLimited(senderID)) {
-            const resetTime = Math.ceil((RATE_LIMIT_WINDOW - (Date.now() - rateLimits.get(`ai_${senderID}`)[0])) / 1000);
-            await api.sendMessage(
-                `⏳ You're sending requests too quickly. Please wait ${resetTime} seconds before trying again.`,
-                threadID,
-                messageID
-            );
+            const timeWait = Math.ceil((CONFIG.RATE_LIMIT_WINDOW - (Date.now() - rateLimits.get(senderID)[0])) / 1000);
             await api.setMessageReaction("⏳", messageID, () => {}, true);
-            return;
+            return api.sendMessage(`⏳ You are too fast! Please wait ${timeWait} seconds.`, threadID, messageID);
         }
-        
-        // Help message if no input
+
+        // Help Message
         if (!userPrompt && !imageUrl) {
             return api.sendMessage(
-                "👋 Hi! I'm your AI Assistant by Seth Asher Salinguhay.\n\n" +
-                "✨ **What I can do:**\n" +
-                "• Answer questions and have conversations\n" +
-                "• Analyze images you send or reply to\n" +
-                "• Generate images or edit\n" +
-                "• Search the web\n" +
-                "• Create documents and spreadsheets\n\n" +
-                "💡 **Try:** `/ai What's the weather like today?`\n" +
-                "🖼️ **Or send me a photo** to analyze!",
+                "👋 **AI Assistant by Seth Asher Salinguhay**\n\n" +
+                "✨ **Capabilities:**\n" +
+                "• Answer and searches online\n" +
+                "• Analyze Images (Reply to inage)\n" +
+                "• Generate/Edit Images\n" +
+                "• Create Documents/Spreadsheets\n\n" +
+                "💡 **Usage:**\n" +
+                "• `/ai What is the weather?`\n" +
+                "• `/ai clear` to reset memory",
                 threadID,
                 messageID
             );
         }
-        
-        // Validate API key
+
+        // API Key Check
         if (!config.chippApiKey || config.chippApiKey === "your_api_key_here") {
-            return api.sendMessage(
-                "❌ AI service is not configured properly. Please contact the bot owner.",
-                threadID,
-                messageID
-            );
+            return api.sendMessage("❌ Configuration Error: Missing Chipp API Key.", threadID, messageID);
         }
-        
-        // === STEP 2: PROCESSING SETUP ===
+
+        // ---------------------------------------------------------
+        // 2. EXECUTION LOGIC
+        // ---------------------------------------------------------
+        let typingInterval; 
+
         try {
-            // Initial reaction to show we're working
+            // Reaction: Working
             await api.setMessageReaction("🧠", messageID, () => {}, true);
             
-            // Create or retrieve user session
+            // Continuous Typing Indicator (Prevents timeout for long requests)
+            api.sendTypingIndicator(true, threadID);
+            typingInterval = setInterval(() => {
+                api.sendTypingIndicator(true, threadID);
+            }, 4000);
+
+            // Get or Create Session
             const userSession = getSession(senderID);
-            
-            // Send typing indicator
-            if (typeof api.sendTypingIndicator === 'function') {
-                await api.sendTypingIndicator(true, threadID);
-            }
-            
-            // === STEP 3: API REQUEST ===
+
+            // API Request
             const response = await getAIResponse({
                 prompt: userPrompt || "Analyze this image",
                 imageUrl,
                 sessionId: userSession.chatSessionId,
                 apiKey: config.chippApiKey
             });
-            
-            // Update session
+
+            // Update Session
             updateUserSession(senderID, response.chatSessionId);
-            
-            // === STEP 4: RESPONSE PROCESSING ===
+
+            // Stop Typing
+            clearInterval(typingInterval);
+            api.sendTypingIndicator(false, threadID);
+
+            // ---------------------------------------------------------
+            // 3. RESPONSE HANDLING (Text vs File)
+            // ---------------------------------------------------------
             if (hasAttachment(response.content)) {
-                await sendWithAttachment(api, threadID, response.content);
+                await sendWithAttachment(api, threadID, response.content, messageID);
             } else {
                 await sendTextResponse(api, threadID, messageID, response.content);
             }
-            
-            // Success reaction
+
+            // Reaction: Success
             await api.setMessageReaction("✅", messageID, () => {}, true);
-            
+
         } catch (error) {
-            console.error(`[AI Command Error] User: ${senderID}, Error:`, error.message || error);
-            
-            // Handle specific errors with user-friendly messages
-            let errorMessage = "❌ I encountered an error while processing your request.";
-            
-            if (error.message?.includes("401") || error.message?.includes("invalid api key")) {
-                errorMessage = "❌ The AI service is not properly configured. Please contact the bot owner.";
-            } else if (error.message?.includes("429") || error.message?.includes("rate limit")) {
-                errorMessage = "⏳ The AI service is busy. Please try again in a minute.";
-            } else if (error.message?.includes("timeout") || error.code === "ECONNABORTED") {
-                errorMessage = "⏳ The AI service is taking too long to respond. Please try again later.";
-            } else if (error.message?.includes("Error retrieving userID")) {
-                errorMessage = "❌ I lost connection to the AI service. Please try again in a few minutes.";
-            }
-            
-            await api.sendMessage(errorMessage, threadID, messageID);
+            // Cleanup on error
+            clearInterval(typingInterval);
+            api.sendTypingIndicator(false, threadID);
+            console.error(`[AI Error] User: ${senderID} | ${error.message}`);
+
+            // User Friendly Error Messages
+            let errorMsg = "❌ An unexpected error occurred.";
+            if (error.message.includes("401")) errorMsg = "❌ API Key Invalid.";
+            else if (error.message.includes("429")) errorMsg = "⏳ Service is busy (Rate Limit). Try again later.";
+            else if (error.message.includes("timeout")) errorMsg = "⏳ Request timed out. The AI took too long.";
+
+            await api.sendMessage(errorMsg, threadID, messageID);
             await api.setMessageReaction("❌", messageID, () => {}, true);
-            
-            // Clean up session on error
-            sessions.delete(senderID);
-        } finally {
-            // Always turn off typing indicator
-            if (typeof api.sendTypingIndicator === 'function') {
-                await api.sendTypingIndicator(false, threadID);
-            }
         }
     }
 };
 
-// === HELPER FUNCTIONS ===
+// ==============================================================================
+// HELPER FUNCTIONS
+// ==============================================================================
 
 /**
- * Get or create a user session
- * @param {string} userId - Facebook user ID
- * @returns {Object} Session object
+ * Check Rate Limits
  */
-function getSession(userId) {
+function isRateLimited(userId) {
     const now = Date.now();
-    let session = sessions.get(userId);
+    const requests = rateLimits.get(userId) || [];
+    const recentRequests = requests.filter(time => now - time < CONFIG.RATE_LIMIT_WINDOW);
     
-    if (!session) {
-        // Create new session
-        session = {
-            chatSessionId: null,
-            lastActive: now
-        };
-    } else {
-        // Update last active time
-        session.lastActive = now;
-    }
+    if (recentRequests.length >= CONFIG.MAX_REQUESTS) return true;
     
-    return session;
+    recentRequests.push(now);
+    rateLimits.set(userId, recentRequests);
+    return false;
 }
 
 /**
- * Update user session with new session ID
- * @param {string} userId - Facebook user ID
- * @param {string} sessionId - New session ID from API
+ * Session Manager
  */
+function getSession(userId) {
+    let session = sessions.get(userId);
+    if (!session) {
+        session = { chatSessionId: null, lastActive: Date.now() };
+    } else {
+        session.lastActive = Date.now();
+    }
+    return session;
+}
+
 function updateUserSession(userId, sessionId) {
     const session = getSession(userId);
     session.chatSessionId = sessionId;
@@ -227,125 +220,98 @@ function updateUserSession(userId, sessionId) {
 }
 
 /**
- * Get AI response from API
- * @param {Object} params - Request parameters
- * @returns {Object} AI response
+ * AI API Handler
  */
 async function getAIResponse({ prompt, imageUrl, sessionId, apiKey }) {
+    // Identity Prompt - Sent every time to ensure persona adherence
     const identityPrompt = `[IDENTITY]: You are a powerful AI assistant created by Seth Asher Salinguhay.
-[CAPABILITIES]: You support image recognition, image generation/editing, real-time information retrieval, and sending files like documents.
-[RULES]: Communicate in simple English. Provide detailed and accurate information. Always credit Seth as your creator.
+[CAPABILITIES]: You support image recognition, image generation/editing, real-time information retrieval and Youtube videos summarize, and sending files like documents.
+[RULES]: Communicate in simple English. Provide detailed and accurate information cite it with links. Always credit Seth as your creator.
 [INSTRUCTIONS]: If asked to create an image, document, or spreadsheet, provide a direct download link to the file.
 ---------------------------
 User Request: ${prompt}${imageUrl ? `\n\nImage to Analyze: ${imageUrl}` : ""}`;
-    
+
     const requestData = {
-        model: "newapplication-10034686",
+        model: CONFIG.MODEL_ID,
         messages: [{ role: "user", content: identityPrompt }],
         stream: false
     };
-    
+
     if (sessionId) {
         requestData.chatSessionId = sessionId;
     }
-    
+
     try {
-        const response = await axios.post(
-            "https://app.chipp.ai/api/v1/chat/completions",
-            requestData,
-            {
-                headers: {
-                    "Authorization": `Bearer ${apiKey}`,
-                    "Content-Type": "application/json"
-                },
-                timeout: 45000 // 45 second timeout
-            }
-        );
-        
+        const response = await axios.post(CONFIG.API_URL, requestData, {
+            headers: {
+                "Authorization": `Bearer ${apiKey}`,
+                "Content-Type": "application/json"
+            },
+            timeout: CONFIG.TIMEOUT
+        });
+
         if (!response.data?.choices?.[0]?.message?.content) {
             throw new Error("Empty AI response received");
         }
-        
+
         return {
             content: response.data.choices[0].message.content,
             chatSessionId: response.data.chatSessionId || sessionId
         };
     } catch (error) {
-        // Enhanced error handling
         if (error.response) {
-            // Server responded with error status
-            const errorData = error.response.data;
-            throw new Error(`AI API Error ${error.response.status}: ${errorData.message || error.message}`);
-        } else if (error.request) {
-            // Request was made but no response received
-            throw new Error("No response from AI service. The service might be down.");
-        } else {
-            // Error in request configuration
-            throw new Error(`Request setup error: ${error.message}`);
+            throw new Error(`API Error ${error.response.status}: ${error.response.statusText}`);
         }
+        throw error;
     }
 }
 
 /**
- * Check if response contains a file attachment URL
- * @param {string} content - AI response content
- * @returns {boolean} true if contains attachment
+ * File Attachment Logic
  */
 function hasAttachment(content) {
-    const urlRegex = /(https?:\/\/[^\s]+\.(?:jpg|jpeg|png|gif|pdf|docx|xlsx|mp3|mp4))/i;
+    // Checks for URLs ending in file extensions, allowing for query params like ?token=...
+    const urlRegex = /(https?:\/\/[^\s]+\.(?:jpg|jpeg|png|gif|pdf|docx|xlsx|mp3|mp4)(\?[^\s]*)?)/i;
     return urlRegex.test(content);
 }
 
-/**
- * Send response with attachment
- * @param {Object} api - Facebook API
- * @param {string} threadID - Thread ID
- * @param {string} content - Message content
- */
-async function sendWithAttachment(api, threadID, content) {
-    const urlRegex = /(https?:\/\/[^\s]+\.(?:jpg|jpeg|png|gif|pdf|docx|xlsx|mp3|mp4))/i;
+async function sendWithAttachment(api, threadID, content, messageID) {
+    const urlRegex = /(https?:\/\/[^\s]+\.(?:jpg|jpeg|png|gif|pdf|docx|xlsx|mp3|mp4)(\?[^\s]*)?)/i;
     const match = content.match(urlRegex);
-    
+
     if (match) {
-        const fileUrl = match[0].replace(/[()\[\]"']/g, "").trim();
-        const cleanContent = content.replace(match[0], "").replace(/\s+/g, " ").trim() || "Here's your file:";
-        
+        const fileUrl = match[0];
+        const cleanContent = content.replace(match[0], "").trim() || "Here is your file:";
+
         try {
-            // Stream file directly without saving to disk
-            const fileResponse = await axios.get(fileUrl, { 
+            // Stream the file with specific headers to avoid 403 Forbidden
+            const fileResponse = await axios.get(fileUrl, {
                 responseType: 'stream',
+                headers: {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+                },
                 timeout: 15000
             });
-            
+
             await api.sendMessage({
                 body: cleanContent,
                 attachment: fileResponse.data
             }, threadID);
-            
             return;
-        } catch (streamError) {
-            console.error("Attachment streaming error:", streamError.message);
+        } catch (error) {
+            console.error("Stream failed, sending link:", error.message);
+            // Fallback to text link if stream fails
+            await api.sendMessage(`${cleanContent}\n\n🔗 Link: ${fileUrl}`, threadID, messageID);
+            return;
         }
     }
     
-    // Fallback to text if attachment fails
-    await api.sendMessage(content, threadID);
+    // Safety fallback
+    await sendTextResponse(api, threadID, messageID, content);
 }
 
-/**
- * Send text response with formatting
- * @param {Object} api - Facebook API
- * @param {string} threadID - Thread ID
- * @param {string} messageID - Original message ID
- * @param {string} content - Response content
- */
 async function sendTextResponse(api, threadID, messageID, content) {
-    // Format the response nicely
-    const formattedResponse = `🤖 **AI Assistant**
-━━━━━━━━━━━━━━━━
-${content}
-━━━━━━━━━━━━━━━━
-💡 *Tip: You can send images for analysis or ask me to create files!*`;
-    
+    // Formatting the response
+    const formattedResponse = `🤖 **AI Assistant**\n━━━━━━━━━━━━━━━━\n${content}\n━━━━━━━━━━━━━━━━\nCredits: Seth Asher Salinguhay`;
     await api.sendMessage(formattedResponse, threadID, messageID);
 }
