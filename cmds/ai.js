@@ -107,8 +107,8 @@ module.exports = {
                 "✨ **What I can do:**\n" +
                 "• Answer questions and have conversations\n" +
                 "• Analyze images you send or reply to\n" +
-                "• Generate images using /deepimg\n" +
-                "• Search the web with /webpilot\n" +
+                "• Generate images or edit\n" +
+                "• Search the web\n" +
                 "• Create documents and spreadsheets\n\n" +
                 "💡 **Try:** `/ai What's the weather like today?`\n" +
                 "🖼️ **Or send me a photo** to analyze!",
