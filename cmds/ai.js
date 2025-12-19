@@ -9,7 +9,7 @@ module.exports = {
     name: "ai",
     aliases: ["chip", "amdus", "pai"], // Added gpt alias
     usePrefix: false,
-    description: "Multi-functional AI Assistant made by Seth Asher Salinguhay. Features:\n• 🔍 Real-time Information (Search the web)\n• 👁️ Image Recognition (Analyze photos)\n• 🎨 Image Generation & Editing (Create art)\n• 📂 File Generator (Create documents & spreadsheets)",
+    description: "Multi-functional AI Assistant made by Seth Asher Salinguhay. Features:\n• 🔍 Real-time Information (Search the web) and analyze YOUTUBE videos\n• 👁️ Image Recognition (Analyze photos)\n• 🎨 Image Generation & Editing (Create art)\n• 📂 File Generator (Create documents & spreadsheets)",
     usage: "ai <message>",
     cooldown: 5,
 
